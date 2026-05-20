@@ -223,8 +223,9 @@ const app = {
         sidebarContainer.style.display = 'block';
       }
       if (navbarContainer) {
-        navbarContainer.innerHTML = `<img src="${logoData}" style="max-height: 48px; max-width: 140px; object-fit: contain; border-radius: 4px;">`;
-        navbarContainer.style.display = 'block';
+        navbarContainer.innerHTML = `<img src="${logoData}" style="max-height: 48px; max-width: 140px; object-fit: contain; border-radius: 4px; display: block;">`;
+        navbarContainer.style.display = 'flex';
+        navbarContainer.style.alignItems = 'center';
       }
       if (pdfContainer) {
         pdfContainer.innerHTML = `<img src="${logoData}" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
@@ -269,7 +270,7 @@ const app = {
     }
     
     if (fileId) {
-      return `https://docs.google.com/uc?export=download&id=${fileId}`;
+      return `https://lh3.googleusercontent.com/d/${fileId}`;
     }
     return url;
   },
@@ -1462,27 +1463,69 @@ const app = {
     const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
     const remaining = Number(inv.totalAmount) - paid;
     
-    const amountStr = prompt(`Sisa tagihan untuk invoice ini adalah ${this.formatCurrency(remaining)}.\n\nMasukkan nominal pelunasan tambahan (kosongkan jika lunasi semua):`, remaining);
+    document.getElementById('payoffInvoiceId').value = inv.id;
+    document.getElementById('payoffInvoiceNumber').textContent = inv.invoiceNumber;
+    document.getElementById('payoffTotalAmount').textContent = this.formatCurrency(inv.totalAmount);
+    document.getElementById('payoffPaidAmount').textContent = this.formatCurrency(paid);
+    document.getElementById('payoffRemainingAmount').textContent = this.formatCurrency(remaining);
     
-    if(amountStr === null) return; // Cancelled
+    this.currentRemainingPayoff = remaining;
     
-    let addAmount = amountStr.trim() === '' ? remaining : Number(amountStr);
-    if(isNaN(addAmount) || addAmount <= 0) {
+    const amountInput = document.getElementById('payoffAmountInput');
+    if (amountInput) {
+      amountInput.value = remaining;
+      amountInput.max = remaining;
+    }
+    
+    this.openModal('paymentPayoffModal');
+    lucide.createIcons();
+  },
+
+  autoFillPayoff() {
+    const amountInput = document.getElementById('payoffAmountInput');
+    if (amountInput && this.currentRemainingPayoff !== undefined) {
+      amountInput.value = this.currentRemainingPayoff;
+    }
+  },
+
+  async savePaymentPayoff(e) {
+    e.preventDefault();
+    const id = document.getElementById('payoffInvoiceId').value;
+    const inv = this.data.invoices.find(i => i.id == id);
+    if (!inv) return;
+    
+    const amountInput = document.getElementById('payoffAmountInput');
+    const addAmount = Number(amountInput.value);
+    
+    if (isNaN(addAmount) || addAmount <= 0) {
       this.showAlert("Nominal pelunasan tidak valid.", "error");
       return;
     }
-
+    
+    const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
     const newPaid = paid + addAmount;
     const status = newPaid >= inv.totalAmount ? 'Lunas' : 'DP / Sebagian';
-
+    
     const payload = { ...inv };
-    payload.items = JSON.stringify(inv.items);
+    payload.items = typeof inv.items === 'string' ? inv.items : JSON.stringify(inv.items);
     payload.paidAmount = newPaid;
     payload.status = status;
     
-    await this.updateRow('Invoices', payload);
-    this.renderInvoices();
-    this.renderDashboard();
+    this.showLoading(true, "Menyimpan Pelunasan...");
+    
+    try {
+      await this.updateRow('Invoices', payload);
+      this.closeModal('paymentPayoffModal');
+      this.renderInvoices();
+      this.renderDashboard();
+      this.renderSchedules(true);
+      this.showAlert("Pembayaran pelunasan berhasil disimpan!", "success");
+    } catch (err) {
+      console.error(err);
+      this.showAlert("Gagal menyimpan pelunasan.", "error");
+    } finally {
+      this.showLoading(false);
+    }
   },
 
   addInvoiceItem() {

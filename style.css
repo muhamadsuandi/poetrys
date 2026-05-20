@@ -714,6 +714,8 @@ body.light-theme .table-bordered th {
   letter-spacing: 0.5px !important;
   white-space: nowrap !important;
   margin: 0 !important;
+  line-height: 1 !important;
+  margin-top: -2px !important;
 }
 
 .navbar-tabs {
