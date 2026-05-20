@@ -817,7 +817,23 @@ body.light-theme .lang-flag-btn.active {
   display: flex !important;
   align-items: center !important;
   gap: 10px !important;
+  cursor: pointer !important;
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid transparent !important;
 }
+
+.navbar-user:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.light-theme .navbar-user:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
 
 .user-details-navbar {
   display: flex !important;

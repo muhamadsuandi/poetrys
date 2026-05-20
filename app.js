@@ -8,6 +8,7 @@ const app = {
     menus: [],
     invoices: [],
     users: [],
+    schedules: [],
     currentUser: null,
     apiUrl: localStorage.getItem('apiUrl') || '', // Akan diinisialisasi di init() jika kosong
     language: localStorage.getItem('appLanguage') || 'id'
@@ -158,9 +159,16 @@ const app = {
     this.bindEvents();
     
     if (this.data.currentUser) {
-      this.loadData().then(() => {
-        this.navigate('dashboard');
-      });
+      // Immediate load from cache for blazing fast UI
+      this.data.menus = JSON.parse(localStorage.getItem('menus') || '[]');
+      this.data.invoices = JSON.parse(localStorage.getItem('invoices') || '[]');
+      this.data.users = JSON.parse(localStorage.getItem('users') || '[]');
+      this.data.schedules = JSON.parse(localStorage.getItem('schedules') || '[]');
+      
+      this.navigate('dashboard');
+      
+      // Silently fetch fresh data in background
+      this.loadData(true);
     }
   },
 
@@ -194,7 +202,10 @@ const app = {
   },
 
   applyLogo() {
-    const logoData = localStorage.getItem('businessLogo') || './logo.png';
+    let logoData = localStorage.getItem('businessLogo') || './logo.png';
+    if (logoData && logoData.startsWith('http')) {
+      logoData = this.convertDriveUrl(logoData);
+    }
     
     const loginContainer = document.getElementById('loginLogoContainer');
     const sidebarContainer = document.getElementById('sidebarLogoContainer');
@@ -243,6 +254,37 @@ const app = {
         settingsPreview.innerHTML = `<span class="text-muted" style="font-size:12px; text-align:center; padding:4px;">No Logo</span>`;
       }
     }
+  },
+
+  convertDriveUrl(url) {
+    if (!url) return '';
+    let fileId = '';
+    const fileIdMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    const idParamMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    
+    if (fileIdMatch && fileIdMatch[1]) {
+      fileId = fileIdMatch[1];
+    } else if (idParamMatch && idParamMatch[1]) {
+      fileId = idParamMatch[1];
+    }
+    
+    if (fileId) {
+      return `https://docs.google.com/uc?export=download&id=${fileId}`;
+    }
+    return url;
+  },
+
+  saveLogoUrl() {
+    const urlInput = document.getElementById('settingLogoUrl');
+    if (!urlInput) return;
+    const url = urlInput.value.trim();
+    if (!url) {
+      this.showAlert("Harap masukkan URL logo yang valid.", "warning");
+      return;
+    }
+    localStorage.setItem('businessLogo', url);
+    this.applyLogo();
+    this.showAlert("URL Logo berhasil disimpan!", "success");
   },
 
   saveLogo(e) {
@@ -321,7 +363,8 @@ const app = {
 
   applyRoles() {
     const role = this.data.currentUser.role;
-    document.getElementById('displayUsername').textContent = this.data.currentUser.username;
+    const displayName = this.data.currentUser.name || this.data.currentUser.username;
+    document.getElementById('displayUsername').textContent = displayName;
     document.getElementById('displayRole').textContent = role;
 
     const adminElements = document.querySelectorAll('.admin-only');
@@ -339,7 +382,7 @@ const app = {
     }
   },
 
-  login(username, password) {
+  async login(username, password) {
     this.showLoading(true);
     
     // Fallback default admin
@@ -355,32 +398,33 @@ const app = {
       return;
     }
 
-    // Check DB
-    if (this.data.users.length === 0 && this.data.apiUrl) {
-       this.fetchData('Users').then(users => {
-          const u = users.find(x => x.username === username && x.password === password);
-          this.showLoading(false);
-          if(u) {
-            localStorage.setItem('currentUser', JSON.stringify(u));
-            this.data.currentUser = u;
-            this.checkAuth();
-            this.loadData().then(() => this.navigate('dashboard'));
-          } else {
-            document.getElementById('loginError').classList.remove('hidden');
-          }
-       });
-    } else {
-      const localUsers = JSON.parse(localStorage.getItem('users') || '[]');
-      const u = localUsers.find(x => x.username === username && x.password === password);
-      this.showLoading(false);
+    try {
+      let usersToCheck = [];
+      
+      if (this.data.apiUrl) {
+        // Fetch fresh users from Google Sheets to ensure we have latest passwords
+        usersToCheck = await this.fetchData('Users');
+      } else {
+        // Offline mode fallback
+        usersToCheck = JSON.parse(localStorage.getItem('users') || '[]');
+      }
+
+      const u = usersToCheck.find(x => x.username === username && x.password === password);
+      
       if(u) {
         localStorage.setItem('currentUser', JSON.stringify(u));
         this.data.currentUser = u;
         this.checkAuth();
-        this.loadData().then(() => this.navigate('dashboard'));
+        await this.loadData();
+        this.navigate('dashboard');
       } else {
         document.getElementById('loginError').classList.remove('hidden');
       }
+    } catch (e) {
+      console.error("Login error:", e);
+      document.getElementById('loginError').classList.remove('hidden');
+    } finally {
+      this.showLoading(false);
     }
   },
 
@@ -413,6 +457,11 @@ const app = {
       if(page === 'users') this.renderUsers();
       if(page === 'settings') {
         document.getElementById('settingApiUrl').value = this.data.apiUrl;
+        const logoData = localStorage.getItem('businessLogo') || '';
+        const urlInput = document.getElementById('settingLogoUrl');
+        if (urlInput) {
+          urlInput.value = logoData.startsWith('http') ? logoData : '';
+        }
       }
       if(page === 'reports') this.renderReports();
     } catch(err) {
@@ -422,34 +471,54 @@ const app = {
   },
 
   // === Data Layer ===
-  async loadData() {
-    this.showLoading(true);
+  async loadData(quiet = false) {
+    if (!quiet) this.showLoading(true);
     if (!this.data.apiUrl) {
       // Load from LocalStorage
       this.data.menus = JSON.parse(localStorage.getItem('menus') || '[]');
       this.data.invoices = JSON.parse(localStorage.getItem('invoices') || '[]');
       this.data.users = JSON.parse(localStorage.getItem('users') || '[]');
+      this.data.schedules = JSON.parse(localStorage.getItem('schedules') || '[]');
     } else {
       // Load from Google Sheets
       try {
-        const [menus, invoices, users] = await Promise.all([
-          this.fetchData('Menus'),
-          this.fetchData('Invoices'),
-          this.fetchData('Users')
-        ]);
-        this.data.menus = menus;
-        // Parse invoice items JSON
-        this.data.invoices = invoices.map(inv => ({
-          ...inv,
-          items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items
-        }));
-        this.data.users = users;
+        const res = await fetch(`${this.data.apiUrl}?action=GET_INIT_DATA`);
+        const json = await res.json();
+        
+        if (json.status === 'success' && json.data) {
+          this.data.menus = json.data.Menus || [];
+          localStorage.setItem('menus', JSON.stringify(this.data.menus));
+          
+          const invoices = json.data.Invoices || [];
+          // Parse invoice items JSON
+          this.data.invoices = invoices.map(inv => ({
+            ...inv,
+            items: typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items
+          }));
+          localStorage.setItem('invoices', JSON.stringify(this.data.invoices));
+          
+          this.data.users = json.data.Users || [];
+          localStorage.setItem('users', JSON.stringify(this.data.users));
+          
+          this.data.schedules = json.data.Schedules || [];
+          localStorage.setItem('schedules', JSON.stringify(this.data.schedules));
+        } else {
+          throw new Error("Invalid response format");
+        }
       } catch (e) {
         console.error("Error loading data", e);
         this.showAlert("Failed to load data from API. Please check Settings.", "error");
       }
     }
-    this.showLoading(false);
+    
+    // Re-render currently active view to reflect newly loaded data
+    const activeLink = document.querySelector('.nav-link.active');
+    if (activeLink) {
+      const page = activeLink.getAttribute('data-page');
+      this.navigate(page);
+    }
+    
+    if (!quiet) this.showLoading(false);
   },
 
   async fetchData(sheet) {
@@ -656,7 +725,7 @@ const app = {
     for(let i=6; i>=0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = this.getLocalYMD(d);
       dates.push(dateStr);
       
       const sum = this.data.invoices
@@ -763,6 +832,7 @@ const app = {
             <td>${m.id}</td>
             <td><strong>${m.name}</strong></td>
             <td>${this.formatCurrency(m.price)}</td>
+            <td><span class="badge" style="background: rgba(212,175,55,0.1); color: var(--color-primary); padding: 4px 8px; border-radius: 4px; font-weight: 500;">${m.unit || 'pax'}</span></td>
             <td><span class="text-muted">${m.description || '-'}</span></td>
             <td>
               <div style="display: flex; gap: 4px;">
@@ -875,6 +945,7 @@ const app = {
       document.getElementById('menuId').value = menu.id;
       document.getElementById('menuName').value = menu.name;
       document.getElementById('menuPrice').value = menu.price;
+      document.getElementById('menuUnit').value = menu.unit || 'pax';
       document.getElementById('menuDesc').value = menu.description;
       this.openModal('menuModal');
     }
@@ -952,6 +1023,7 @@ const app = {
       id: isUpdate ? idField : Date.now().toString(),
       name: document.getElementById('menuName').value,
       price: document.getElementById('menuPrice').value,
+      unit: document.getElementById('menuUnit').value,
       description: document.getElementById('menuDesc').value
     };
 
@@ -1188,6 +1260,7 @@ const app = {
           <td style="padding: 12px 15px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 500;">${item.name}</td>
           <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #475569;">${this.formatCurrency(item.price)}</td>
           <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569;">${item.qty}</td>
+          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569; font-weight: 500;">${item.unit || 'pax'}</td>
           <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 600;">${this.formatCurrency(item.subtotal)}</td>
         </tr>
       `;
@@ -1205,12 +1278,15 @@ const app = {
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrText)}`;
     
     const qrImg = document.getElementById('pdfQrCode');
+    
+    // Simpan invoice number untuk konfirmasi cetak
+    this.currentPrintInvoiceNumber = inv.invoiceNumber;
+    
     qrImg.onload = () => {
-      this.generatePDF(inv.invoiceNumber);
+      this.openModal('pdfTemplateWrapper');
     };
     qrImg.onerror = () => {
-      // Fallback in case API fails
-      this.generatePDF(inv.invoiceNumber);
+      this.openModal('pdfTemplateWrapper');
     };
     qrImg.src = qrUrl;
   },
@@ -1262,7 +1338,7 @@ const app = {
     document.getElementById('editInvCateringLocation').value = inv.cateringLocation || '';
     document.getElementById('editInvPaidAmount').value = inv.paidAmount || 0;
     
-    document.getElementById('editInvCateringDate').value = inv.cateringDate ? new Date(inv.cateringDate).toISOString().split('T')[0] : '';
+    document.getElementById('editInvCateringDate').value = inv.cateringDate ? this.getLocalYMD(inv.cateringDate) : '';
     
     // Load current items to temporary state
     this.editInvoiceState.items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
@@ -1284,6 +1360,7 @@ const app = {
         menuId: menu.id,
         name: menu.name,
         price: menu.price,
+        unit: menu.unit || 'pax',
         qty: qty,
         subtotal: menu.price * qty
       });
@@ -1308,7 +1385,8 @@ const app = {
         <tr>
           <td style="padding: 8px;">${item.name}</td>
           <td style="text-align: right; padding: 8px;">${this.formatCurrency(item.price)}</td>
-          <td style="text-align: center; padding: 8px;">${item.qty}</td>
+          <td style="text-align: center; padding: 8px;"><strong>${item.qty}</strong></td>
+          <td style="text-align: center; padding: 8px;"><span class="badge" style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-weight: 500;">${item.unit || 'pax'}</span></td>
           <td style="text-align: right; padding: 8px; font-weight: 600;">${this.formatCurrency(item.subtotal)}</td>
           <td style="text-align: center; padding: 8px;"><button type="button" class="btn btn-danger btn-sm" style="padding: 4px 8px;" onclick="app.removeEditInvoiceItem(${i})"><i data-lucide="trash-2" style="width:14px; height: 14px;"></i></button></td>
         </tr>
@@ -1335,7 +1413,7 @@ const app = {
       customerName: document.getElementById('editInvCustomerName').value,
       customerPhone: document.getElementById('editInvCustomerPhone').value,
       cateringLocation: document.getElementById('editInvCateringLocation').value,
-      cateringDate: new Date(document.getElementById('editInvCateringDate').value).toISOString(),
+      cateringDate: document.getElementById('editInvCateringDate').value,
       paidAmount: paidAmount,
       totalAmount: totalAmount,
       status: status,
@@ -1419,6 +1497,7 @@ const app = {
         menuId: menu.id,
         name: menu.name,
         price: menu.price,
+        unit: menu.unit || 'pax',
         qty: qty,
         subtotal: menu.price * qty
       });
@@ -1442,7 +1521,8 @@ const app = {
         <tr>
           <td>${item.name}</td>
           <td>${this.formatCurrency(item.price)}</td>
-          <td>${item.qty}</td>
+          <td><strong>${item.qty}</strong></td>
+          <td><span class="badge" style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 4px; font-weight: 500;">${item.unit || 'pax'}</span></td>
           <td>${this.formatCurrency(item.subtotal)}</td>
           <td><button class="btn btn-danger btn-sm" onclick="app.removeInvoiceItem(${i})"><i data-lucide="trash-2" style="width:16px;"></i></button></td>
         </tr>
@@ -1510,16 +1590,15 @@ const app = {
     this.navigate('invoices');
   },
 
+  confirmPrintInvoice() {
+    if (this.currentPrintInvoiceNumber) {
+      this.generatePDF(this.currentPrintInvoiceNumber);
+    }
+  },
+
   generatePDF(fileName) {
     this.showLoading(true);
-    const wrapper = document.getElementById('pdfTemplateWrapper');
     const pdfEl = document.getElementById('pdfContent');
-    
-    // temporary unhide
-    wrapper.classList.remove('hidden');
-    wrapper.style.top = '0';
-    wrapper.style.left = '0';
-    wrapper.style.zIndex = '-1000';
     
     html2canvas(pdfEl, { scale: 2, useCORS: true }).then(canvas => {
       try {
@@ -1534,15 +1613,13 @@ const app = {
         console.error(err);
         this.showAlert("Gagal membuat PDF.", "error");
       } finally {
-        wrapper.classList.add('hidden');
-        wrapper.style.top = '-9999px';
+        this.closeModal('pdfTemplateWrapper');
         this.showLoading(false);
       }
     }).catch(err => {
       console.error(err);
       this.showAlert("Gagal memproses gambar struk.", "error");
-      wrapper.classList.add('hidden');
-      wrapper.style.top = '-9999px';
+      this.closeModal('pdfTemplateWrapper');
       this.showLoading(false);
     });
   },
@@ -1629,15 +1706,22 @@ const app = {
     const prevMonthDays = new Date(year, month, 0).getDate();
     
     // Schedules in this month
-    // Map of YYYY-MM-DD -> array of invoices
+    // Map of YYYY-MM-DD -> object {invoices: [], schedules: []}
     const scheduleMap = {};
+    
     this.data.invoices.forEach(inv => {
       if (inv.cateringDate) {
-        const dateStr = new Date(inv.cateringDate).toISOString().split('T')[0];
-        if (!scheduleMap[dateStr]) {
-          scheduleMap[dateStr] = [];
-        }
-        scheduleMap[dateStr].push(inv);
+        const dateStr = this.getLocalYMD(inv.cateringDate);
+        if (!scheduleMap[dateStr]) scheduleMap[dateStr] = { invoices: [], schedules: [] };
+        scheduleMap[dateStr].invoices.push(inv);
+      }
+    });
+
+    this.data.schedules.forEach(sch => {
+      if (sch.date) {
+        const dateStr = this.getLocalYMD(sch.date);
+        if (!scheduleMap[dateStr]) scheduleMap[dateStr] = { invoices: [], schedules: [] };
+        scheduleMap[dateStr].schedules.push(sch);
       }
     });
 
@@ -1652,7 +1736,11 @@ const app = {
     // Render current month days
     for (let day = 1; day <= totalDays; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const hasSchedule = !!scheduleMap[dateStr];
+      const dayData = scheduleMap[dateStr];
+      const hasInvoice = dayData && dayData.invoices.length > 0;
+      const hasBooking = dayData && dayData.schedules.some(s => (!s.type || s.type === 'Booking'));
+      const hasMeeting = dayData && dayData.schedules.some(s => s.type === 'Meeting');
+      const hasAny = hasInvoice || hasBooking || hasMeeting;
       const isSelected = this.scheduleState.selectedDate === dateStr;
       
       let style = `
@@ -1668,16 +1756,18 @@ const app = {
       let dayClass = 'calendar-day';
       if (isSelected) {
         style += `
-          background: rgba(212, 175, 55, 0.2) !important;
+          background: var(--color-primary) !important;
           border: 1.5px solid var(--color-primary) !important;
           color: #fff !important;
           font-weight: 700;
         `;
-      } else if (hasSchedule) {
+      } else if (hasAny) {
+        let borderColor = hasInvoice ? 'rgba(212, 175, 55, 0.4)' : (hasMeeting ? 'rgba(139, 92, 246, 0.4)' : 'rgba(56, 189, 248, 0.4)');
+        let bgColor = hasInvoice ? 'rgba(212, 175, 55, 0.08)' : (hasMeeting ? 'rgba(139, 92, 246, 0.08)' : 'rgba(56, 189, 248, 0.08)');
         style += `
-          background: rgba(212, 175, 55, 0.08);
-          border: 1.5px dashed rgba(212, 175, 55, 0.4);
-          color: var(--color-primary);
+          background: ${bgColor};
+          border: 1.5px dashed ${borderColor};
+          color: var(--color-text);
           font-weight: 600;
         `;
       } else {
@@ -1687,18 +1777,20 @@ const app = {
       }
       
       // Dot indicator under day number
-      const dotHtml = hasSchedule ? `
-        <span style="
-          position: absolute;
-          bottom: 4px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 5px;
-          height: 5px;
-          background: var(--color-primary);
-          border-radius: 50%;
-        "></span>
-      ` : '';
+      let dotHtml = '';
+      if (hasAny) {
+        dotHtml += `<div style="position: absolute; bottom: 3px; left: 0; right: 0; display: flex; justify-content: center; gap: 3px;">`;
+        if (hasInvoice) {
+          dotHtml += `<span style="width: 5px; height: 5px; background: var(--color-primary); border-radius: 50%;"></span>`;
+        }
+        if (hasBooking) {
+          dotHtml += `<span style="width: 5px; height: 5px; background: #38bdf8; border-radius: 50%;"></span>`;
+        }
+        if (hasMeeting) {
+          dotHtml += `<span style="width: 5px; height: 5px; background: #8b5cf6; border-radius: 50%;"></span>`;
+        }
+        dotHtml += `</div>`;
+      }
       
       daysContainer.innerHTML += `
         <div class="${dayClass}" style="${style}" onclick="app.selectCalendarDate('${dateStr}')">
@@ -1772,36 +1864,62 @@ const app = {
     if (!container) return;
     container.innerHTML = '';
     
-    // 1. Filter
-    let filtered = this.data.invoices.filter(inv => {
-      if (!inv.cateringDate) return false;
-      
-      // Filter by Name
+    // 1. Combine Data
+    const combinedSchedules = [];
+    
+    // Add invoices
+    this.data.invoices.forEach(inv => {
+      if (!inv.cateringDate) return;
+      const itemsArr = typeof inv.items === 'string' ? JSON.parse(inv.items || '[]') : (inv.items || []);
+      combinedSchedules.push({
+        _rawDate: inv.cateringDate,
+        title: `${inv.customerName || 'Unknown'} - ${inv.invoiceNumber}`,
+        subtitle: `<i data-lucide="phone" style="width:14px; vertical-align:middle;"></i> ${this.formatPhone(inv.customerPhone)}`,
+        details: `Items: ${itemsArr.map(i => i.qty + 'x ' + i.name).join(', ')}`,
+        badgeText: 'Invoice',
+        badgeColor: 'var(--color-primary)'
+      });
+    });
+
+    // Add standalone schedules
+    this.data.schedules.forEach(sch => {
+      if (!sch.date) return;
+      combinedSchedules.push({
+        _isStandalone: true,
+        _rawId: sch.id,
+        _rawDate: sch.date,
+        title: sch.title || 'Untitled',
+        subtitle: `<i data-lucide="map-pin" style="width:14px; vertical-align:middle;"></i> ${sch.location || '-'}`,
+        details: sch.notes ? `Catatan: ${sch.notes}` : '',
+        badgeText: sch.type || 'Booking',
+        badgeColor: sch.type === 'Meeting' ? '#8b5cf6' : '#38bdf8'
+      });
+    });
+
+    // 2. Filter
+    let filtered = combinedSchedules.filter(item => {
       const matchName = !this.scheduleState.searchName || 
-        (inv.customerName && inv.customerName.toLowerCase().includes(this.scheduleState.searchName));
+        (item.title.toLowerCase().includes(this.scheduleState.searchName.toLowerCase()));
         
-      // Filter by Date
       let matchDate = true;
       if (this.scheduleState.selectedDate) {
-        const invDateOnly = new Date(inv.cateringDate).toISOString().split('T')[0];
-        matchDate = (invDateOnly === this.scheduleState.selectedDate);
+        const itemDateOnly = this.getLocalYMD(item._rawDate);
+        matchDate = (itemDateOnly === this.scheduleState.selectedDate);
       }
-      
       return matchName && matchDate;
     });
 
-    // 2. Sort
+    // 3. Sort
     filtered.sort((a, b) => {
-      const dateA = new Date(a.cateringDate);
-      const dateB = new Date(b.cateringDate);
+      const dateA = new Date(a._rawDate);
+      const dateB = new Date(b._rawDate);
       return this.scheduleState.sortAsc ? (dateA - dateB) : (dateB - dateA);
     });
 
-    // 3. Paginate
+    // 4. Paginate
     const totalItems = filtered.length;
     const totalPages = Math.ceil(totalItems / this.scheduleState.perPage) || 1;
     
-    // Bound Check
     if (this.scheduleState.currentPage > totalPages) {
       this.scheduleState.currentPage = totalPages;
     }
@@ -1810,9 +1928,9 @@ const app = {
     const endIndex = startIndex + this.scheduleState.perPage;
     const pageItems = filtered.slice(startIndex, endIndex);
 
-    // 4. Render Items
+    // 5. Render Items
     if (pageItems.length === 0) {
-      const noSchedulesMsg = (this.data.language === 'en') ? 'No catering schedules found.' : 'Tidak ada jadwal katering yang cocok.';
+      const noSchedulesMsg = (this.data.language === 'en') ? 'No catering schedules found.' : 'Tidak ada jadwal yang cocok.';
       container.innerHTML = `
         <div style="text-align: center; padding: 40px; color: #94a3b8;">
           <i data-lucide="calendar-off" style="width: 48px; height: 48px; margin-bottom: 12px; color: #64748b; display: inline-block;"></i>
@@ -1821,24 +1939,33 @@ const app = {
       `;
       lucide.createIcons();
     } else {
-      pageItems.forEach(inv => {
-        const d = new Date(inv.cateringDate);
+      pageItems.forEach(item => {
+        const d = new Date(item._rawDate);
         const day = d.getDate() || '-';
         const locale = (this.data.language === 'en') ? 'en-US' : 'id-ID';
         const month = !isNaN(d) ? d.toLocaleString(locale, { month: 'short' }) : '-';
-        
-        const itemsArr = typeof inv.items === 'string' ? JSON.parse(inv.items || '[]') : (inv.items || []);
+
+        const actionsHtml = item._isStandalone ? `
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn-secondary btn-sm" onclick="app.editSchedule('${item._rawId}')" style="padding: 4px 8px; font-size: 11px;"><i data-lucide="edit" style="width:12px; height: 12px; margin-right: 4px;"></i> Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="app.deleteSchedule('${item._rawId}')" style="padding: 4px 8px; font-size: 11px;"><i data-lucide="trash-2" style="width:12px; height: 12px; margin-right: 4px;"></i> Hapus</button>
+          </div>
+        ` : '';
 
         container.innerHTML += `
-          <div class="timeline-item">
+          <div class="timeline-item" style="position: relative;">
+            <div style="position: absolute; top: 0; right: 0; background: ${item.badgeColor}; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-bottom-left-radius: 8px; text-transform: uppercase;">
+              ${item.badgeText}
+            </div>
             <div class="timeline-date">
               <div class="day">${day}</div>
               <div class="month">${month}</div>
             </div>
-            <div class="timeline-content" style="flex: 1;">
-              <h4 style="font-weight: 600;">${inv.customerName || 'Unknown'} - ${inv.invoiceNumber}</h4>
-              <p><i data-lucide="phone" style="width:14px; vertical-align:middle;"></i> ${this.formatPhone(inv.customerPhone)}</p>
-              <p style="margin-top:0.5rem; color:var(--color-primary); font-weight: 500;">Items: ${itemsArr.map(i => i.qty + 'x ' + i.name).join(', ')}</p>
+            <div class="timeline-content" style="flex: 1; padding-top: 8px;">
+              <h4 style="font-weight: 600;">${item.title}</h4>
+              <p>${item.subtitle}</p>
+              ${item.details ? `<p style="margin-top:0.5rem; color:var(--color-primary); font-weight: 500;">${item.details}</p>` : ''}
+              ${actionsHtml}
             </div>
           </div>
         `;
@@ -1893,6 +2020,100 @@ const app = {
   setSchedulePage(page) {
     this.scheduleState.currentPage = page;
     this.renderSchedules(false);
+  },
+
+  openAddScheduleModal() {
+    const form = document.getElementById('addScheduleForm');
+    if (form) form.reset();
+    
+    document.getElementById('scheduleId').value = '';
+    document.getElementById('scheduleModalTitle').textContent = 'Buat Jadwal Baru';
+    
+    // Default date to today
+    const dateInput = document.getElementById('scheduleDate');
+    if (dateInput) dateInput.value = this.getLocalYMD(new Date());
+    
+    this.openModal('addScheduleModal');
+  },
+
+  editSchedule(id) {
+    const sch = this.data.schedules.find(s => s.id == id);
+    if (!sch) return;
+    
+    const form = document.getElementById('addScheduleForm');
+    if (form) form.reset();
+    
+    document.getElementById('scheduleId').value = sch.id;
+    document.getElementById('scheduleModalTitle').textContent = 'Edit Jadwal';
+    
+    document.getElementById('scheduleType').value = sch.type || 'Booking';
+    document.getElementById('scheduleTitle').value = sch.title || '';
+    document.getElementById('scheduleDate').value = sch.date ? this.getLocalYMD(sch.date) : '';
+    document.getElementById('scheduleLocation').value = sch.location || '';
+    document.getElementById('scheduleNotes').value = sch.notes || '';
+    
+    this.openModal('addScheduleModal');
+  },
+
+  async deleteSchedule(id) {
+    if (await this.showConfirm("Hapus jadwal ini? Jadwal juga akan dihapus dari Google Calendar.", "Hapus Jadwal")) {
+      this.showLoading(true, "Menghapus jadwal...");
+      try {
+        await this.deleteRow('Schedules', id);
+        this.renderSchedules(true);
+        this.showAlert("Jadwal berhasil dihapus!", "success");
+      } catch (err) {
+        this.showAlert("Gagal menghapus jadwal.", "error");
+      } finally {
+        this.showLoading(false);
+      }
+    }
+  },
+
+  async saveSchedule(e) {
+    e.preventDefault();
+    const id = document.getElementById('scheduleId').value;
+    const type = document.getElementById('scheduleType').value;
+    const title = document.getElementById('scheduleTitle').value;
+    const date = document.getElementById('scheduleDate').value;
+    const location = document.getElementById('scheduleLocation').value;
+    const notes = document.getElementById('scheduleNotes').value;
+
+    this.showLoading(true, "Menyimpan Jadwal...");
+    try {
+      if (id) {
+        const existing = this.data.schedules.find(s => s.id == id);
+        const payload = {
+          ...existing,
+          type: type,
+          title: title,
+          date: date,
+          location: location,
+          notes: notes
+        };
+        await this.updateRow('Schedules', payload);
+        this.showAlert("Jadwal berhasil diperbarui!", "success");
+      } else {
+        const newSchedule = {
+          id: Date.now().toString(),
+          type: type,
+          title: title,
+          date: date,
+          location: location,
+          notes: notes,
+          createdat: new Date().toISOString()
+        };
+        await this.addRow('Schedules', newSchedule);
+        this.showAlert("Jadwal baru berhasil dibuat!", "success");
+      }
+      this.closeModal('addScheduleModal');
+      this.renderSchedules(true);
+    } catch (err) {
+      console.error(err);
+      this.showAlert("Gagal menyimpan jadwal.", "error");
+    } finally {
+      this.showLoading(false);
+    }
   },
 
   // === Feature: Users ===
@@ -1961,6 +2182,96 @@ const app = {
     document.getElementById('userForm').reset();
   },
 
+  openProfileModal() {
+    if (!this.data.currentUser) return;
+    
+    // Find current user full data from memory
+    const user = this.data.users.find(u => u.username === this.data.currentUser.username) || this.data.currentUser;
+    
+    document.getElementById('profileName').value = user.name || user.username;
+    document.getElementById('profileUsername').value = user.username || '';
+    document.getElementById('profilePassword').value = user.password || '';
+    
+    this.openModal('profileModal');
+  },
+
+  async saveProfile(e) {
+    e.preventDefault();
+    if (!this.data.currentUser) return;
+    
+    const name = document.getElementById('profileName').value.trim();
+    const username = document.getElementById('profileUsername').value.trim();
+    const password = document.getElementById('profilePassword').value.trim();
+    
+    if (!name || !username || !password) {
+      this.showAlert("Semua field harus diisi!", "warning");
+      return;
+    }
+    
+    // Check if username is already taken by someone else
+    const existing = this.data.users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.id !== this.data.currentUser.id);
+    if (existing) {
+      this.showAlert("Username sudah digunakan oleh akun lain. Silakan pilih username lain.", "warning");
+      return;
+    }
+    
+    this.showLoading(true, "Memperbarui data akun...");
+    
+    // Update currentUser local state
+    const updatedUser = {
+      ...this.data.currentUser,
+      name: name,
+      username: username,
+      password: password
+    };
+    
+    try {
+      // Find full user object in this.data.users
+      const index = this.data.users.findIndex(u => u.id == this.data.currentUser.id);
+      let fullUserObj = index > -1 ? this.data.users[index] : { id: this.data.currentUser.id.toString(), role: this.data.currentUser.role };
+      
+      fullUserObj.name = name;
+      fullUserObj.username = username;
+      fullUserObj.password = password;
+      
+      // Update in Google Sheets / LocalStorage
+      if (this.data.apiUrl) {
+        await this.updateRow('Users', fullUserObj);
+      } else {
+        // Offline mode fallback
+        const users = JSON.parse(localStorage.getItem('users') || '[]');
+        const idx = users.findIndex(u => u.id == fullUserObj.id);
+        if (idx > -1) {
+          users[idx] = fullUserObj;
+        } else {
+          users.push(fullUserObj);
+        }
+        localStorage.setItem('users', JSON.stringify(users));
+        this.data.users = users;
+      }
+      
+      // Update logged in user session
+      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      this.data.currentUser = updatedUser;
+      
+      // Apply the new name to Navbar
+      this.applyRoles();
+      
+      this.closeModal('profileModal');
+      this.showAlert("Data profil akun berhasil diperbarui!", "success");
+    } catch (err) {
+      console.error(err);
+      this.showAlert("Gagal memperbarui data profil akun.", "error");
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  async logoutFromProfile() {
+    this.closeModal('profileModal');
+    await this.logout();
+  },
+
   // === Feature: Reports ===
   renderReports() {
     const ctx = document.getElementById('reportChart').getContext('2d');
@@ -2019,6 +2330,17 @@ const app = {
     let str = phone.toString().trim();
     if (str.startsWith('8')) return '0' + str;
     return str;
+  },
+
+  getLocalYMD(val) {
+    if (!val) return '';
+    if (typeof val === 'string' && val.length === 10 && val.includes('-')) return val;
+    const d = new Date(val);
+    if (isNaN(d)) return val;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   },
 
   formatDate(dateStr) {
@@ -2249,7 +2571,7 @@ const app = {
             if (typeof rawDate === 'number') {
               // Convert serial number of excel date
               const parsedDate = new Date((rawDate - (25567 + 2)) * 86400 * 1000);
-              dateStr = parsedDate.toISOString().split('T')[0];
+              dateStr = app.getLocalYMD(parsedDate);
             } else {
               const cleanDateStr = String(rawDate).trim();
               // Try formatting
@@ -2269,7 +2591,7 @@ const app = {
           }
 
           if (!dateStr || dateStr === 'NaN-NaN-NaN') {
-            dateStr = new Date().toISOString().split('T')[0];
+            dateStr = app.getLocalYMD(new Date());
           }
 
           const customerName = String(row[idxCustName]).trim();
@@ -2377,6 +2699,12 @@ const app = {
 
     document.getElementById('btnLogout').addEventListener('click', () => this.logout());
 
+    // Navbar User Profile click event
+    const navbarUser = document.querySelector('.navbar-user');
+    if (navbarUser) {
+      navbarUser.addEventListener('click', () => this.openProfileModal());
+    }
+
     // Settings
     document.getElementById('btnSaveSettings').addEventListener('click', () => this.saveSettings());
 
@@ -2387,6 +2715,12 @@ const app = {
     // Invoice events
     document.getElementById('btnAddMenuItem').addEventListener('click', () => this.addInvoiceItem());
     document.getElementById('btnSaveInvoice').addEventListener('click', () => this.saveInvoice());
+    
+    // Schedule events
+    const addScheduleForm = document.getElementById('addScheduleForm');
+    if (addScheduleForm) {
+      addScheduleForm.addEventListener('submit', (e) => this.saveSchedule(e));
+    }
   }
 };
 

@@ -14,13 +14,18 @@
   <link rel="stylesheet" href="style.css">
   
   <!-- Libraries -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="https://unpkg.com/lucide@latest"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+  <script>
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light-theme');
+    }
+  </script>
 
   <!-- LOADING OVERLAY -->
   <div id="loadingOverlay" class="loading-overlay hidden">
@@ -29,7 +34,7 @@
   </div>
 
   <!-- LOGIN PAGE -->
-  <div id="pageLogin" class="page login-page">
+  <div id="pageLogin" class="page login-page hidden">
     <div class="login-card glass">
       <div id="loginLogoContainer" style="display: flex; justify-content: center; margin-bottom: 1.5rem;"></div>
       <h1 class="brand-title">Poetry's Catering</h1>
@@ -318,6 +323,7 @@
                     <th>Item</th>
                     <th>Price</th>
                     <th>Qty</th>
+                    <th>Unit</th>
                     <th>Subtotal</th>
                     <th>Action</th>
                   </tr>
@@ -327,11 +333,11 @@
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colspan="3" class="text-right"><strong>Grand Total:</strong></td>
+                    <td colspan="4" class="text-right"><strong>Grand Total:</strong></td>
                     <td colspan="2"><strong id="invGrandTotal">Rp 0</strong></td>
                   </tr>
                   <tr>
-                    <td colspan="3" class="text-right" style="vertical-align: middle;"><strong>Uang Muka (DP) / Dibayar:</strong></td>
+                    <td colspan="4" class="text-right" style="vertical-align: middle;"><strong>Uang Muka (DP) / Dibayar:</strong></td>
                     <td colspan="2">
                       <input type="number" id="invPaidAmount" value="0" min="0" class="form-control" style="width: 150px; padding: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 4px;">
                     </td>
@@ -354,7 +360,10 @@
             <h1 data-lang-key="schedules">Upcoming Schedules</h1>
             <p data-lang-key="schedulesSub">Catering dates based on created invoices</p>
           </div>
-          <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data" data-lang-key="refresh"><i data-lucide="refresh-cw"></i> Refresh</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data" data-lang-key="refresh"><i data-lucide="refresh-cw"></i> Refresh</button>
+            <button class="btn btn-primary" onclick="app.openAddScheduleModal()"><i data-lucide="calendar-plus"></i> Buat Jadwal</button>
+          </div>
         </header>
         <div class="glass p-6">
           <div class="schedule-dashboard-layout" style="display: flex; gap: 32px; flex-wrap: wrap;">
@@ -460,6 +469,7 @@
                   <th>ID</th>
                   <th>Menu Name</th>
                   <th>Price</th>
+                  <th>Unit</th>
                   <th>Description</th>
                   <th>Actions</th>
                 </tr>
@@ -556,6 +566,16 @@
             </div>
           </div>
 
+          <div class="form-group" style="margin-top: 1rem;">
+            <label>Atau Gunakan Link Google Drive / URL Logo:</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="settingLogoUrl" placeholder="https://drive.google.com/file/d/... atau URL gambar" style="flex: 1; margin: 0; background: rgba(0,0,0,0.2); border: 1px solid var(--color-border); border-radius: 8px; color: var(--color-text); padding: 8px 12px; height: 38px;">
+              <button class="btn btn-primary btn-sm" onclick="app.saveLogoUrl()" style="white-space: nowrap; height: 38px;"><i data-lucide="save"></i> Simpan URL</button>
+            </div>
+            <p class="text-muted mt-1" style="font-size: 11px;">Mendukung link share Google Drive (akan otomatis dikonversi ke link direct image secara real-time).</p>
+          </div>
+
+
           <div class="mt-6 p-4" style="background: rgba(255,255,255,0.05); border-radius: 8px;">
             <p><i data-lucide="info" style="display:inline-block; vertical-align:middle; width:16px; height:16px;"></i> Buka file <code>Google_Sheets_Tutorial.md</code> untuk panduan lengkap cara mendapatkan URL ini.</p>
           </div>
@@ -582,6 +602,10 @@
           <div class="form-group">
             <label>Price (Rp)</label>
             <input type="number" id="menuPrice" required min="0">
+          </div>
+          <div class="form-group">
+            <label>Unit (e.g. pax, box, porsi, tumpeng)</label>
+            <input type="text" id="menuUnit" placeholder="e.g. pax" required>
           </div>
           <div class="form-group">
             <label>Description</label>
@@ -677,6 +701,7 @@
                   <th>Item</th>
                   <th style="text-align: right; padding: 8px;">Harga</th>
                   <th style="text-align: center; padding: 8px;">Qty</th>
+                  <th style="text-align: center; padding: 8px;">Unit</th>
                   <th style="text-align: right; padding: 8px;">Subtotal</th>
                   <th style="text-align: center; padding: 8px;">Aksi</th>
                 </tr>
@@ -698,6 +723,90 @@
     </div>
   </div>
 
+  <!-- ADD SCHEDULE MODAL -->
+  <div class="modal-backdrop hidden" id="addScheduleModal">
+    <div class="modal glass">
+      <div class="modal-header">
+        <h2 id="scheduleModalTitle" style="margin:0; font-size: 1.25rem; font-weight: 600;">Buat Jadwal Baru</h2>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('addScheduleModal')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="addScheduleForm">
+          <input type="hidden" id="scheduleId">
+          <div class="form-group">
+            <label>Tipe Jadwal</label>
+            <select id="scheduleType" required>
+              <option value="Booking">Catering Booking</option>
+              <option value="Meeting">Meeting</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Nama Acara / Klien</label>
+            <input type="text" id="scheduleTitle" placeholder="Cth: Wedding Bpk. Budi" required>
+          </div>
+          <div class="form-group">
+            <label>Tanggal Acara / Meeting</label>
+            <input type="date" id="scheduleDate" required>
+          </div>
+          <div class="form-group">
+            <label>Lokasi</label>
+            <input type="text" id="scheduleLocation" placeholder="Alamat lokasi">
+          </div>
+          <div class="form-group">
+            <label>Catatan</label>
+            <textarea id="scheduleNotes" rows="3" placeholder="Tambahkan rincian khusus jika ada..."></textarea>
+          </div>
+          <div class="form-actions mt-4">
+            <button type="submit" class="btn btn-primary btn-block">Simpan Jadwal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILE MODAL -->
+  <div class="modal-backdrop hidden" id="profileModal" style="z-index: 2000;">
+    <div class="modal glass" style="max-width: 450px; width: 90%;">
+      <div class="modal-header">
+        <h3 style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.25rem;"><i data-lucide="user-cog" style="color: var(--color-primary); width: 22px; height: 22px;"></i> Pengaturan Profil</h3>
+        <button class="btn-icon" onclick="app.closeModal('profileModal')"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="profileForm" onsubmit="app.saveProfile(event)">
+          <div class="form-group">
+            <label>Nama Lengkap</label>
+            <div class="input-wrapper">
+              <i data-lucide="user-check"></i>
+              <input type="text" id="profileName" placeholder="Nama Lengkap Anda" required style="padding-left: 2.75rem;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Username</label>
+            <div class="input-wrapper">
+              <i data-lucide="user"></i>
+              <input type="text" id="profileUsername" placeholder="Username" required style="padding-left: 2.75rem;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <div class="input-wrapper">
+              <i data-lucide="lock"></i>
+              <input type="password" id="profilePassword" placeholder="Password Baru" required style="padding-left: 2.75rem;">
+            </div>
+          </div>
+          
+          <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1.5rem; height: 42px; font-weight: 600;"><i data-lucide="save"></i> Simpan Perubahan</button>
+          
+          <div style="margin: 1rem 0; height: 1px; background: var(--color-border);"></div>
+          
+          <button type="button" class="btn btn-danger btn-block" onclick="app.logoutFromProfile()" style="height: 42px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;"><i data-lucide="log-out" style="width: 16px; height: 16px;"></i> Keluar Akun (Logout)</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- CUSTOM NOTIFICATION MODAL (ALERT/CONFIRM) -->
   <div class="modal-backdrop hidden" id="customAlertModal" style="z-index: 2500;">
     <div class="modal glass" style="max-width: 400px; width: 90%; text-align: center; padding: 28px; border-radius: 16px;">
@@ -714,9 +823,19 @@
     </div>
   </div>
 
-  <!-- HIDDEN PDF TEMPLATE -->
-  <div class="invoice-preview-wrapper hidden" id="pdfTemplateWrapper">
-    <div class="pdf-container" id="pdfContent" style="position: relative; padding: 40px; font-family: 'Inter', sans-serif; background: #ffffff; color: #1e293b; line-height: 1.5; border-radius: 12px;">
+  <!-- PRINT PREVIEW MODAL -->
+  <div class="modal-backdrop hidden" id="pdfTemplateWrapper" style="z-index: 3000;">
+    <div class="modal glass" style="max-width: 850px; width: 95%; padding: 0;">
+      <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;">Print Preview</h3>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-success" onclick="app.confirmPrintInvoice()"><i data-lucide="download"></i> Download PDF</button>
+          <button class="btn-icon" onclick="app.closeModal('pdfTemplateWrapper')"><i data-lucide="x"></i></button>
+        </div>
+      </div>
+      <div class="modal-body" style="background: #e2e8f0; padding: 24px; max-height: 80vh; overflow-y: auto; display: flex; justify-content: center;">
+        
+        <div class="pdf-container" id="pdfContent" style="width: 210mm; min-height: 297mm; position: relative; padding: 40px; font-family: 'Inter', sans-serif; background: #ffffff; color: #1e293b; line-height: 1.5; box-shadow: 0 10px 25px rgba(0,0,0,0.2); border-radius: 12px;">
       
       <!-- HEADER with Left Info and Right Logo -->
       <div class="pdf-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px;">
@@ -731,7 +850,7 @@
       </div>
       
       <!-- WATERMARK -->
-      <div id="pdfStatusWatermark" style="position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 55px; font-weight: 800; color: rgba(239, 68, 68, 0.18); border: 6px dashed rgba(239, 68, 68, 0.18); padding: 12px 24px; text-transform: uppercase; letter-spacing: 5px; pointer-events: none; z-index: 0; border-radius: 12px; white-space: nowrap;">BELUM LUNAS</div>
+      <div id="pdfStatusWatermark" style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg); font-size: 55px; font-weight: 800; color: rgba(239, 68, 68, 0.18); border: 6px dashed rgba(239, 68, 68, 0.18); padding: 12px 24px; text-transform: uppercase; letter-spacing: 5px; pointer-events: none; z-index: 0; border-radius: 12px; white-space: nowrap;">BELUM LUNAS</div>
 
       <!-- INVOICE INFO SECTION -->
       <div style="display: flex; justify-content: space-between; align-items: stretch; margin-top: 30px; gap: 20px; position: relative; z-index: 1;">
@@ -757,6 +876,7 @@
             <th style="padding: 12px 15px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 6px 0 0 6px;">Description</th>
             <th style="padding: 12px 15px; text-align: right; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Price</th>
             <th style="padding: 12px 15px; text-align: center; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Qty</th>
+            <th style="padding: 12px 15px; text-align: center; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Unit</th>
             <th style="padding: 12px 15px; text-align: right; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 0 6px 6px 0;">Total</th>
           </tr>
         </thead>
@@ -815,9 +935,11 @@
         <p style="margin: 0; text-transform: uppercase; letter-spacing: 1px;">Thank you for trusting Poetry's Catering</p>
       </div>
       
+        </div>
+      </div>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
