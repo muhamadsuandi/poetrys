@@ -22,6 +22,8 @@ const app = {
       masterMenu: "Master Menu",
       masterUser: "Master User",
       reports: "Reports",
+      incomeReports: "Laporan Pendapatan",
+      revenueAnalysis: "Analisis realisasi & sisa piutang katering",
       settings: "Settings",
       management: "Management",
       languageLabel: "Bahasa:",
@@ -139,7 +141,16 @@ const app = {
     invoiceNumber: ''
   },
 
+  reportState: {
+    filterType: 'year', // 'year' or 'range'
+    selectedYear: new Date().getFullYear(),
+    startDate: '',
+    endDate: '',
+    showChart: false
+  },
+
   chartInstance: null,
+  reportChartInstance: null,
 
   init() {
     // Gunakan URL default jika belum ada URL yang disimpan di browser ini
@@ -446,7 +457,17 @@ const app = {
     if(viewEl) viewEl.classList.add('active');
     
     const navEl = document.querySelector(`.nav-link[data-page="${page}"]`);
-    if(navEl) navEl.classList.add('active');
+    if(navEl) {
+      navEl.classList.add('active');
+      // Smoothly scroll active navigation tab into view
+      navEl.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center'
+      });
+      // Slide the background highlight indicator
+      this.updateNavIndicator(page);
+    }
 
     // Page specific renders
     try {
@@ -464,11 +485,33 @@ const app = {
           urlInput.value = logoData.startsWith('http') ? logoData : '';
         }
       }
-      if(page === 'reports') this.renderReports();
+      if(page === 'reports') {
+        this.populateReportYearDropdown();
+        this.toggleReportFilterInputs();
+        this.renderReports();
+      }
     } catch(err) {
       console.error("Navigation error on page:", page, err);
       this.showAlert("Terjadi kesalahan sistem saat memuat halaman " + page, "error");
     }
+  },
+
+  updateNavIndicator(page) {
+    setTimeout(() => {
+      const tabsContainer = document.querySelector('.navbar-tabs');
+      const activeTab = document.querySelector(`.nav-link[data-page="${page}"]`);
+      const indicator = document.querySelector('.nav-indicator');
+      
+      if (!tabsContainer || !activeTab || !indicator) return;
+      
+      const containerRect = tabsContainer.getBoundingClientRect();
+      const tabRect = activeTab.getBoundingClientRect();
+      
+      const leftOffset = tabRect.left - containerRect.left + tabsContainer.scrollLeft;
+      
+      indicator.style.left = `${leftOffset}px`;
+      indicator.style.width = `${tabRect.width}px`;
+    }, 50);
   },
 
   // === Data Layer ===
@@ -1270,6 +1313,23 @@ const app = {
     const finalPaid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
     const finalRemaining = Number(inv.totalAmount) - finalPaid;
 
+    const subtotalVal = Number(inv.subtotalAmount) || Number(inv.totalAmount) || 0;
+    const discType = inv.discountType || 'none';
+    const discVal = Number(inv.discountValue) || 0;
+    const discAmt = Number(inv.discountAmount) || 0;
+
+    document.getElementById('pdfSubtotal').textContent = this.formatCurrency(subtotalVal);
+    const pdfDiscRow = document.getElementById('pdfDiscountRow');
+    if (pdfDiscRow) {
+      if (discType !== 'none' && discAmt > 0) {
+        document.getElementById('pdfDiscountInfo').textContent = discType === 'percent' ? `(${discVal}%)` : '';
+        document.getElementById('pdfDiscountAmount').textContent = `- ${this.formatCurrency(discAmt)}`;
+        pdfDiscRow.style.display = 'flex';
+      } else {
+        pdfDiscRow.style.display = 'none';
+      }
+    }
+
     document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
     document.getElementById('pdfPaidAmount').textContent = this.formatCurrency(finalPaid);
     document.getElementById('pdfRemainingBalance').textContent = this.formatCurrency(finalRemaining);
@@ -1296,7 +1356,7 @@ const app = {
     const select = document.getElementById('invMenuSelect');
     select.innerHTML = '<option value="">-- Choose Menu --</option>';
     this.data.menus.forEach(m => {
-      select.innerHTML += `<option value="${m.id}">${m.name} - ${this.formatCurrency(m.price)}</option>`;
+      select.innerHTML += `<option value="${m.id}">${m.name}</option>`;
     });
     
     document.getElementById('invEditId').value = '';
@@ -1305,6 +1365,12 @@ const app = {
     document.getElementById('invCateringLocation').value = '';
     document.getElementById('invCateringDate').value = '';
     document.getElementById('invPaidAmount').value = '0';
+    document.getElementById('invDiscountType').value = 'none';
+    const discValInput = document.getElementById('invDiscountValue');
+    if (discValInput) {
+      discValInput.value = '0';
+      discValInput.style.display = 'none';
+    }
     document.getElementById('invDateCreated').valueAsDate = new Date();
     
     // Auto generate invoice number
@@ -1329,7 +1395,7 @@ const app = {
     if (select) {
       select.innerHTML = '<option value="">-- Pilih Menu --</option>';
       this.data.menus.forEach(m => {
-        select.innerHTML += `<option value="${m.id}">${m.name} - ${this.formatCurrency(m.price)}</option>`;
+        select.innerHTML += `<option value="${m.id}">${m.name}</option>`;
       });
     }
 
@@ -1341,21 +1407,37 @@ const app = {
     
     document.getElementById('editInvCateringDate').value = inv.cateringDate ? this.getLocalYMD(inv.cateringDate) : '';
     
+    // Populate discount inputs in edit modal
+    const discType = inv.discountType || 'none';
+    const discValue = inv.discountValue || 0;
+    const discTypeEl = document.getElementById('editInvDiscountType');
+    if (discTypeEl) discTypeEl.value = discType;
+    const discValEl = document.getElementById('editInvDiscountValue');
+    if (discValEl) {
+      discValEl.value = discValue;
+      discValEl.style.display = discType === 'none' ? 'none' : 'inline-block';
+    }
+    
     // Load current items to temporary state
     this.editInvoiceState.items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
     this.editInvoiceState.invoiceNumber = inv.invoiceNumber;
+    this.editInvoiceState.subtotal = inv.subtotalAmount || inv.totalAmount || 0;
+    this.editInvoiceState.discountType = discType;
+    this.editInvoiceState.discountValue = discValue;
+    this.editInvoiceState.discountAmount = inv.discountAmount || 0;
+    this.editInvoiceState.total = inv.totalAmount || 0;
     
     this.updateEditInvoiceItemsTable();
     this.openModal('editInvoiceModal');
   },
 
   addEditInvoiceItem() {
-    const menuId = document.getElementById('editInvMenuSelect').value;
+    const menuName = document.getElementById('editInvMenuSelect').value;
     const qty = parseInt(document.getElementById('editInvMenuQty').value);
     
-    if (!menuId || qty < 1) return;
+    if (!menuName || qty < 1) return;
     
-    const menu = this.data.menus.find(m => m.id == menuId);
+    const menu = this.data.menus.find(m => m.name === menuName);
     if (menu) {
       this.editInvoiceState.items.push({
         menuId: menu.id,
@@ -1366,6 +1448,7 @@ const app = {
         subtotal: menu.price * qty
       });
       this.updateEditInvoiceItemsTable();
+      document.getElementById('editInvMenuSelect').value = ''; // clear input
     }
   },
 
@@ -1379,9 +1462,9 @@ const app = {
     if (!tbody) return;
     tbody.innerHTML = '';
     
-    let total = 0;
+    let subtotal = 0;
     this.editInvoiceState.items.forEach((item, i) => {
-      total += item.subtotal;
+      subtotal += item.subtotal;
       tbody.innerHTML += `
         <tr>
           <td style="padding: 8px;">${item.name}</td>
@@ -1394,7 +1477,42 @@ const app = {
       `;
     });
     
-    document.getElementById('editInvGrandTotal').textContent = this.formatCurrency(total);
+    const discTypeEl = document.getElementById('editInvDiscountType');
+    const discValEl = document.getElementById('editInvDiscountValue');
+    const discLabelEl = document.getElementById('editInvDiscountLabel');
+    
+    const discountType = discTypeEl ? discTypeEl.value : 'none';
+    const discountValue = discValEl ? (Number(discValEl.value) || 0) : 0;
+    let discountAmount = 0;
+    
+    if (discountType === 'percent') {
+      discountAmount = Math.round(subtotal * (discountValue / 100));
+    } else if (discountType === 'nominal') {
+      discountAmount = discountValue;
+    }
+    
+    const grandTotal = Math.max(0, subtotal - discountAmount);
+    
+    const subtotalEl = document.getElementById('editInvSubtotal');
+    if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
+    
+    if (discLabelEl) {
+      if (discountType !== 'none' && discountAmount > 0) {
+        discLabelEl.textContent = `- ${this.formatCurrency(discountAmount)}`;
+        discLabelEl.style.display = 'inline';
+      } else {
+        discLabelEl.style.display = 'none';
+      }
+    }
+    
+    document.getElementById('editInvGrandTotal').textContent = this.formatCurrency(grandTotal);
+    
+    this.editInvoiceState.subtotal = subtotal;
+    this.editInvoiceState.discountType = discountType;
+    this.editInvoiceState.discountValue = discountValue;
+    this.editInvoiceState.discountAmount = discountAmount;
+    this.editInvoiceState.total = grandTotal;
+    
     lucide.createIcons();
   },
 
@@ -1404,7 +1522,11 @@ const app = {
     const inv = this.data.invoices.find(i => i.id == id);
     if (!inv) return;
     
-    const totalAmount = this.editInvoiceState.items.reduce((sum, item) => sum + item.subtotal, 0);
+    const subtotalAmount = this.editInvoiceState.subtotal || 0;
+    const discountType = this.editInvoiceState.discountType || 'none';
+    const discountValue = this.editInvoiceState.discountValue || 0;
+    const discountAmount = this.editInvoiceState.discountAmount || 0;
+    const totalAmount = this.editInvoiceState.total || 0;
     const paidAmount = Number(document.getElementById('editInvPaidAmount').value) || 0;
     
     const status = paidAmount >= totalAmount ? 'Lunas' : (paidAmount > 0 ? 'DP / Sebagian' : 'Belum Lunas');
@@ -1416,6 +1538,10 @@ const app = {
       cateringLocation: document.getElementById('editInvCateringLocation').value,
       cateringDate: document.getElementById('editInvCateringDate').value,
       paidAmount: paidAmount,
+      subtotalAmount: subtotalAmount,
+      discountType: discountType,
+      discountValue: discountValue,
+      discountAmount: discountAmount,
       totalAmount: totalAmount,
       status: status,
       items: JSON.stringify(this.editInvoiceState.items)
@@ -1529,12 +1655,12 @@ const app = {
   },
 
   addInvoiceItem() {
-    const menuId = document.getElementById('invMenuSelect').value;
+    const menuName = document.getElementById('invMenuSelect').value;
     const qty = parseInt(document.getElementById('invMenuQty').value);
     
-    if(!menuId || qty < 1) return;
+    if(!menuName || qty < 1) return;
     
-    const menu = this.data.menus.find(m => m.id == menuId);
+    const menu = this.data.menus.find(m => m.name === menuName);
     if(menu) {
       this.currentInvoice.items.push({
         menuId: menu.id,
@@ -1545,6 +1671,7 @@ const app = {
         subtotal: menu.price * qty
       });
       this.updateInvoiceItemsTable();
+      document.getElementById('invMenuSelect').value = ''; // clear input
     }
   },
 
@@ -1556,10 +1683,10 @@ const app = {
   updateInvoiceItemsTable() {
     const tbody = document.getElementById('invItemsTable');
     tbody.innerHTML = '';
-    let total = 0;
+    let subtotal = 0;
     
     this.currentInvoice.items.forEach((item, i) => {
-      total += item.subtotal;
+      subtotal += item.subtotal;
       tbody.innerHTML += `
         <tr>
           <td>${item.name}</td>
@@ -1572,8 +1699,42 @@ const app = {
       `;
     });
     
-    this.currentInvoice.total = total;
-    document.getElementById('invGrandTotal').textContent = this.formatCurrency(total);
+    const discTypeEl = document.getElementById('invDiscountType');
+    const discValEl = document.getElementById('invDiscountValue');
+    const discLabelEl = document.getElementById('invDiscountLabel');
+    
+    const discountType = discTypeEl ? discTypeEl.value : 'none';
+    const discountValue = discValEl ? (Number(discValEl.value) || 0) : 0;
+    let discountAmount = 0;
+    
+    if (discountType === 'percent') {
+      discountAmount = Math.round(subtotal * (discountValue / 100));
+    } else if (discountType === 'nominal') {
+      discountAmount = discountValue;
+    }
+    
+    const grandTotal = Math.max(0, subtotal - discountAmount);
+    
+    const subtotalEl = document.getElementById('invSubtotal');
+    if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
+    
+    if (discLabelEl) {
+      if (discountType !== 'none' && discountAmount > 0) {
+        discLabelEl.textContent = `- ${this.formatCurrency(discountAmount)}`;
+        discLabelEl.style.display = 'inline';
+      } else {
+        discLabelEl.style.display = 'none';
+      }
+    }
+    
+    document.getElementById('invGrandTotal').textContent = this.formatCurrency(grandTotal);
+    
+    this.currentInvoice.subtotal = subtotal;
+    this.currentInvoice.discountType = discountType;
+    this.currentInvoice.discountValue = discountValue;
+    this.currentInvoice.discountAmount = discountAmount;
+    this.currentInvoice.total = grandTotal;
+    
     lucide.createIcons();
   },
 
@@ -1616,6 +1777,10 @@ const app = {
       cateringLocation: catLocation,
       cateringDate: catDate,
       items: JSON.stringify(this.currentInvoice.items),
+      subtotalAmount: this.currentInvoice.subtotal || this.currentInvoice.total,
+      discountType: this.currentInvoice.discountType || 'none',
+      discountValue: this.currentInvoice.discountValue || 0,
+      discountAmount: this.currentInvoice.discountAmount || 0,
       totalAmount: this.currentInvoice.total,
       paidAmount: paidAmount,
       createdAt: invDate,
@@ -2316,43 +2481,287 @@ const app = {
   },
 
   // === Feature: Reports ===
-  renderReports() {
-    const ctx = document.getElementById('reportChart').getContext('2d');
-    if(this.reportChartInstance) this.reportChartInstance.destroy();
+  // === Feature: Reports ===
+  populateReportYearDropdown() {
+    const yearSelect = document.getElementById('reportYearSelect');
+    if (!yearSelect) return;
     
-    // Group all invoices by month
-    const monthlyData = {};
+    const yearsSet = new Set();
+    yearsSet.add(new Date().getFullYear()); // Always add current year
+    
     this.data.invoices.forEach(inv => {
-      const month = inv.cateringDate ? inv.cateringDate.substring(0, 7) : 'Unknown';
-      monthlyData[month] = (monthlyData[month] || 0) + Number(inv.totalAmount);
+      if (inv.cateringDate) {
+        const year = new Date(inv.cateringDate).getFullYear();
+        if (!isNaN(year)) {
+          yearsSet.add(year);
+        }
+      }
+    });
+    
+    const sortedYears = Array.from(yearsSet).sort((a, b) => b - a);
+    
+    yearSelect.innerHTML = '';
+    sortedYears.forEach(y => {
+      yearSelect.innerHTML += `<option value="${y}">${y}</option>`;
+    });
+    
+    yearSelect.value = this.reportState.selectedYear;
+  },
+
+  toggleReportFilterInputs() {
+    const typeSelect = document.getElementById('reportFilterType');
+    if (!typeSelect) return;
+    
+    const filterType = typeSelect.value;
+    this.reportState.filterType = filterType;
+    
+    const yearGroup = document.getElementById('reportYearInputGroup');
+    const startDateGroup = document.getElementById('reportStartDateGroup');
+    const endDateGroup = document.getElementById('reportEndDateGroup');
+    
+    if (filterType === 'year') {
+      yearGroup.classList.remove('hidden');
+      startDateGroup.classList.add('hidden');
+      endDateGroup.classList.add('hidden');
+    } else {
+      yearGroup.classList.add('hidden');
+      startDateGroup.classList.remove('hidden');
+      endDateGroup.classList.remove('hidden');
+    }
+  },
+
+  applyReportFilters(e) {
+    if (e) e.preventDefault();
+    
+    const filterType = document.getElementById('reportFilterType').value;
+    this.reportState.filterType = filterType;
+    
+    if (filterType === 'year') {
+      this.reportState.selectedYear = parseInt(document.getElementById('reportYearSelect').value);
+    } else {
+      this.reportState.startDate = document.getElementById('reportStartDate').value;
+      this.reportState.endDate = document.getElementById('reportEndDate').value;
+      
+      if (!this.reportState.startDate || !this.reportState.endDate) {
+        this.showAlert("Harap tentukan tanggal mulai dan tanggal selesai.", "warning");
+        return;
+      }
+      if (new Date(this.reportState.startDate) > new Date(this.reportState.endDate)) {
+        this.showAlert("Tanggal mulai tidak boleh melebihi tanggal selesai.", "warning");
+        return;
+      }
+    }
+    
+    this.renderReports();
+  },
+
+  resetReportFilters() {
+    this.reportState.filterType = 'year';
+    this.reportState.selectedYear = new Date().getFullYear();
+    this.reportState.startDate = '';
+    this.reportState.endDate = '';
+    
+    const typeSelect = document.getElementById('reportFilterType');
+    if (typeSelect) typeSelect.value = 'year';
+    
+    const yearSelect = document.getElementById('reportYearSelect');
+    if (yearSelect) yearSelect.value = this.reportState.selectedYear;
+    
+    const startInput = document.getElementById('reportStartDate');
+    if (startInput) startInput.value = '';
+    
+    const endInput = document.getElementById('reportEndDate');
+    if (endInput) endInput.value = '';
+    
+    this.toggleReportFilterInputs();
+    this.renderReports();
+  },
+
+  toggleReportChart() {
+    this.reportState.showChart = !this.reportState.showChart;
+    const chartCard = document.getElementById('reportChartCard');
+    const toggleBtn = document.getElementById('btnToggleReportChart');
+    
+    if (!chartCard || !toggleBtn) return;
+    
+    if (this.reportState.showChart) {
+      chartCard.classList.add('show');
+      toggleBtn.innerHTML = '<i data-lucide="pie-chart" style="width: 16px;"></i> Sembunyikan Resume Grafik';
+      this.renderReportChart();
+    } else {
+      chartCard.classList.remove('show');
+      toggleBtn.innerHTML = '<i data-lucide="pie-chart" style="width: 16px;"></i> Tampilkan Resume Grafik';
+    }
+    lucide.createIcons();
+  },
+
+  renderReports() {
+    const filteredInvoices = this.data.invoices.filter(inv => {
+      if (!inv.cateringDate) return false;
+      const invDateStr = inv.cateringDate.substring(0, 10);
+      
+      if (this.reportState.filterType === 'year') {
+        const year = parseInt(invDateStr.substring(0, 4));
+        return year === this.reportState.selectedYear;
+      } else {
+        return invDateStr >= this.reportState.startDate && invDateStr <= this.reportState.endDate;
+      }
     });
 
-    const labels = Object.keys(monthlyData).sort();
-    const data = labels.map(l => monthlyData[l]);
+    const monthlyGroups = {};
+    
+    filteredInvoices.forEach(inv => {
+      const monthStr = inv.cateringDate.substring(0, 7);
+      if (!monthlyGroups[monthStr]) {
+        monthlyGroups[monthStr] = {
+          monthKey: monthStr,
+          invoiceCount: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          totalRemaining: 0
+        };
+      }
+      
+      const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+      const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+      
+      monthlyGroups[monthStr].invoiceCount += 1;
+      monthlyGroups[monthStr].totalAmount += Number(inv.totalAmount);
+      monthlyGroups[monthStr].totalPaid += paid;
+      monthlyGroups[monthStr].totalRemaining += remaining;
+    });
+
+    const sortedMonths = Object.keys(monthlyGroups).sort();
+
+    const tbody = document.getElementById('reportTableBody');
+    const totalRow = document.getElementById('reportTableTotalRow');
+    if (tbody) {
+      tbody.innerHTML = '';
+      
+      let grandTotalCount = 0;
+      let grandTotalAmount = 0;
+      let grandTotalPaid = 0;
+      let grandTotalRemaining = 0;
+      
+      if (sortedMonths.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 40px; color: var(--color-text-muted);">
+              Tidak ada data transaksi untuk filter terpilih.
+            </td>
+          </tr>
+        `;
+      } else {
+        sortedMonths.forEach(mKey => {
+          const group = monthlyGroups[mKey];
+          grandTotalCount += group.invoiceCount;
+          grandTotalAmount += group.totalAmount;
+          grandTotalPaid += group.totalPaid;
+          grandTotalRemaining += group.totalRemaining;
+          
+          const [year, month] = mKey.split('-');
+          const monthName = new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+          
+          tbody.innerHTML += `
+            <tr>
+              <td><strong>${monthName}</strong></td>
+              <td style="text-align: center;">${group.invoiceCount}</td>
+              <td style="text-align: right;">${this.formatCurrency(group.totalAmount)}</td>
+              <td style="text-align: right; color: var(--color-success); font-weight: 500;">${this.formatCurrency(group.totalPaid)}</td>
+              <td style="text-align: right; color: ${group.totalRemaining > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)'}; font-weight: 500;">
+                ${this.formatCurrency(group.totalRemaining)}
+              </td>
+            </tr>
+          `;
+        });
+      }
+      
+      if (totalRow) {
+        totalRow.innerHTML = `
+          <td>TOTAL KESELURUHAN</td>
+          <td style="text-align: center;">${grandTotalCount}</td>
+          <td style="text-align: right;">${this.formatCurrency(grandTotalAmount)}</td>
+          <td style="text-align: right; color: var(--color-success);">${this.formatCurrency(grandTotalPaid)}</td>
+          <td style="text-align: right; color: ${grandTotalRemaining > 0 ? 'var(--color-danger)' : 'inherit'};">${this.formatCurrency(grandTotalRemaining)}</td>
+        `;
+      }
+    }
+
+    if (this.reportState.showChart) {
+      this.renderReportChart(monthlyGroups, sortedMonths);
+    }
+  },
+
+  renderReportChart(monthlyGroups, sortedMonths) {
+    const canvas = document.getElementById('reportChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (this.reportChartInstance) this.reportChartInstance.destroy();
+
+    if (!monthlyGroups || !sortedMonths) {
+      monthlyGroups = {};
+      this.data.invoices.forEach(inv => {
+        if (!inv.cateringDate) return;
+        const invDateStr = inv.cateringDate.substring(0, 10);
+        
+        let match = false;
+        if (this.reportState.filterType === 'year') {
+          const year = parseInt(invDateStr.substring(0, 4));
+          match = year === this.reportState.selectedYear;
+        } else {
+          match = invDateStr >= this.reportState.startDate && invDateStr <= this.reportState.endDate;
+        }
+        
+        if (match) {
+          const monthStr = invDateStr.substring(0, 7);
+          if (!monthlyGroups[monthStr]) {
+            monthlyGroups[monthStr] = { totalAmount: 0 };
+          }
+          monthlyGroups[monthStr].totalAmount += Number(inv.totalAmount);
+        }
+      });
+      sortedMonths = Object.keys(monthlyGroups).sort();
+    }
+
+    const labels = sortedMonths.map(mKey => {
+      const [year, month] = mKey.split('-');
+      return new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+    });
+    const revenues = sortedMonths.map(l => monthlyGroups[l].totalAmount);
 
     this.reportChartInstance = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: labels,
         datasets: [{
-          label: 'Revenue by Month (Rp)',
-          data: data,
+          label: (this.data.language === 'en') ? 'Revenue by Month (Rp)' : 'Pendapatan Bulanan (Rp)',
+          data: revenues,
           backgroundColor: '#d4af37',
+          borderColor: '#e5c358',
+          borderWidth: 1,
+          borderRadius: 4
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-            legend: {
-                labels: {
-                    color: '#fff'
-                }
+          legend: {
+            labels: {
+              color: 'var(--color-text)'
             }
+          }
         },
         scales: { 
-          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#fff'} },
-          x: { grid: { display: false }, ticks: { color: '#fff'} }
+          y: { 
+            beginAtZero: true, 
+            grid: { color: 'rgba(255,255,255,0.06)' }, 
+            ticks: { color: 'var(--color-text-muted)'} 
+          },
+          x: { 
+            grid: { display: false }, 
+            ticks: { color: 'var(--color-text-muted)'} 
+          }
         }
       }
     });
@@ -2759,11 +3168,87 @@ const app = {
     document.getElementById('btnAddMenuItem').addEventListener('click', () => this.addInvoiceItem());
     document.getElementById('btnSaveInvoice').addEventListener('click', () => this.saveInvoice());
     
+    // Create Invoice Discount listeners
+    const invDiscountType = document.getElementById('invDiscountType');
+    if (invDiscountType) {
+      invDiscountType.addEventListener('change', () => {
+        const valInput = document.getElementById('invDiscountValue');
+        if (invDiscountType.value === 'none') {
+          valInput.style.display = 'none';
+          valInput.value = 0;
+        } else {
+          valInput.style.display = 'inline-block';
+        }
+        this.updateInvoiceItemsTable();
+      });
+    }
+    const invDiscountValue = document.getElementById('invDiscountValue');
+    if (invDiscountValue) {
+      invDiscountValue.addEventListener('input', () => this.updateInvoiceItemsTable());
+    }
+    const invPaidInput = document.getElementById('invPaidAmount');
+    if (invPaidInput) {
+      invPaidInput.addEventListener('input', () => this.updateInvoiceItemsTable());
+    }
+
+    // Edit Invoice Discount listeners
+    const editInvDiscountType = document.getElementById('editInvDiscountType');
+    if (editInvDiscountType) {
+      editInvDiscountType.addEventListener('change', () => {
+        const valInput = document.getElementById('editInvDiscountValue');
+        if (editInvDiscountType.value === 'none') {
+          valInput.style.display = 'none';
+          valInput.value = 0;
+        } else {
+          valInput.style.display = 'inline-block';
+        }
+        this.updateEditInvoiceItemsTable();
+      });
+    }
+    const editInvDiscountValue = document.getElementById('editInvDiscountValue');
+    if (editInvDiscountValue) {
+      editInvDiscountValue.addEventListener('input', () => this.updateEditInvoiceItemsTable());
+    }
+    
     // Schedule events
     const addScheduleForm = document.getElementById('addScheduleForm');
     if (addScheduleForm) {
       addScheduleForm.addEventListener('submit', (e) => this.saveSchedule(e));
     }
+
+    // Reports filter events
+    const filterType = document.getElementById('reportFilterType');
+    if (filterType) {
+      filterType.addEventListener('change', () => this.toggleReportFilterInputs());
+    }
+
+    const filterForm = document.getElementById('reportFilterForm');
+    if (filterForm) {
+      filterForm.addEventListener('submit', (e) => this.applyReportFilters(e));
+    }
+
+    const btnResetFilters = document.getElementById('btnResetReportFilters');
+    if (btnResetFilters) {
+      btnResetFilters.addEventListener('click', () => this.resetReportFilters());
+    }
+
+    const btnToggleChart = document.getElementById('btnToggleReportChart');
+    if (btnToggleChart) {
+      btnToggleChart.addEventListener('click', () => this.toggleReportChart());
+    }
+
+    const btnCloseChart = document.getElementById('btnCloseReportChart');
+    if (btnCloseChart) {
+      btnCloseChart.addEventListener('click', () => this.toggleReportChart());
+    }
+
+    // Dynamic nav indicator alignment on window resize
+    window.addEventListener('resize', () => {
+      const activeTab = document.querySelector('.nav-tab.active');
+      if (activeTab && activeTab.dataset.page) {
+        this.updateNavIndicator(activeTab.dataset.page);
+      }
+    });
   }
 };
 

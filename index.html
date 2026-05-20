@@ -76,6 +76,7 @@
 
       <!-- Center: Navigation Tabs -->
       <nav class="navbar-tabs">
+        <div class="nav-indicator"></div>
         <a href="#" data-page="dashboard" class="nav-tab nav-link active" data-lang-key="dashboard"><i data-lucide="layout-dashboard"></i> <span>Dashboard</span></a>
         <a href="#" data-page="invoices" class="nav-tab nav-link" data-lang-key="invoices"><i data-lucide="file-text"></i> <span>Invoices</span></a>
         <a href="#" data-page="schedules" class="nav-tab nav-link" data-lang-key="schedules"><i data-lucide="calendar"></i> <span>Schedules</span></a>
@@ -302,48 +303,68 @@
               </div>
             </div>
 
-            <h3 class="mt-6">Select Menus</h3>
-            <div class="menu-selection">
-              <div class="form-group">
-                <select id="invMenuSelect">
-                  <option value="">-- Choose Menu --</option>
-                  <!-- Populated dynamically -->
-                </select>
+            <div class="invoice-section-box">
+              <h3 style="margin-top: 0;">Select Menus</h3>
+              <div class="menu-selection">
+                <div class="form-group">
+                  <input type="text" list="invMenuOptions" id="invMenuSelect" placeholder="-- Ketik atau Pilih Menu --" class="form-control" autocomplete="off" style="width: 100%; padding: 0.5rem 1rem;">
+                  <datalist id="invMenuOptions">
+                    <!-- Populated dynamically -->
+                  </datalist>
+                </div>
+                <div class="form-group" style="width: 100px;">
+                  <input type="number" id="invMenuQty" value="1" min="1">
+                </div>
+                <button class="btn btn-primary" id="btnAddMenuItem"><i data-lucide="plus"></i> Add</button>
               </div>
-              <div class="form-group" style="width: 100px;">
-                <input type="number" id="invMenuQty" value="1" min="1">
-              </div>
-              <button class="btn btn-primary" id="btnAddMenuItem"><i data-lucide="plus"></i> Add</button>
-            </div>
 
-            <div class="table-responsive mt-4">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th>Price</th>
-                    <th>Qty</th>
-                    <th>Unit</th>
-                    <th>Subtotal</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="invItemsTable">
-                  <!-- Items go here -->
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colspan="4" class="text-right"><strong>Grand Total:</strong></td>
-                    <td colspan="2"><strong id="invGrandTotal">Rp 0</strong></td>
-                  </tr>
-                  <tr>
-                    <td colspan="4" class="text-right" style="vertical-align: middle;"><strong>Uang Muka (DP) / Dibayar:</strong></td>
-                    <td colspan="2">
-                      <input type="number" id="invPaidAmount" value="0" min="0" class="form-control" style="width: 150px; padding: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 4px;">
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+              <div class="table-responsive mt-4">
+                <table class="table table-bordered invoice-items-table">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Price</th>
+                      <th>Qty</th>
+                      <th>Unit</th>
+                      <th>Subtotal</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invItemsTable">
+                    <!-- Items go here -->
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colspan="4" class="text-right"><strong>Subtotal:</strong></td>
+                      <td colspan="2"><span id="invSubtotal">Rp 0</span></td>
+                    </tr>
+                    <tr>
+                      <td colspan="4" class="text-right" style="vertical-align: middle;"><strong>Diskon:</strong></td>
+                      <td colspan="2">
+                        <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-start;">
+                          <select id="invDiscountType" class="form-control" style="width: 70px; padding: 4px;">
+                            <option value="none">Tidak</option>
+                            <option value="percent">%</option>
+                            <option value="nominal">Rp</option>
+                          </select>
+                          <input type="number" id="invDiscountValue" value="0" min="0" class="form-control" style="width: 100px; padding: 4px; display: none;">
+                          <span id="invDiscountLabel" style="font-weight: 500; color: var(--color-danger); display: none;">- Rp 0</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colspan="4" class="text-right"><strong>Grand Total:</strong></td>
+                      <td colspan="2"><strong id="invGrandTotal">Rp 0</strong></td>
+                    </tr>
+                    <tr>
+                      <td colspan="4" class="text-right" style="vertical-align: middle;"><strong>Uang Muka (DP) / Dibayar:</strong></td>
+                      <td colspan="2">
+                        <input type="number" id="invPaidAmount" value="0" min="0" class="form-control">
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
 
             <div class="form-actions mt-6">
@@ -519,15 +540,82 @@
       <section id="viewReports" class="view admin-only">
         <header class="page-header">
           <div>
-            <h1>Income Reports</h1>
-            <p>Revenue analysis</p>
+            <h1 data-lang-key="incomeReports">Income Reports</h1>
+            <p data-lang-key="revenueAnalysis">Revenue analysis and accounts receivable</p>
           </div>
-          <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data"><i data-lucide="refresh-cw"></i> Refresh</button>
+          <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data"><i data-lucide="refresh-cw"></i> <span data-lang-key="refresh">Refresh</span></button>
         </header>
-        <div class="glass p-6">
-          <h3>Revenue by Date</h3>
-          <div class="chart-container-large mt-4">
+
+        <!-- Section: Filters -->
+        <div class="glass p-6 mb-6">
+          <form id="reportFilterForm">
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="reportFilterType">Filter Type</label>
+                <select id="reportFilterType" class="form-control">
+                  <option value="year">By Year</option>
+                  <option value="range">Date Range</option>
+                </select>
+              </div>
+              <div class="form-group" id="reportYearInputGroup">
+                <label for="reportYearSelect">Select Year</label>
+                <select id="reportYearSelect" class="form-control">
+                  <!-- dynamic years will be loaded here -->
+                </select>
+              </div>
+              <div class="form-group hidden" id="reportStartDateGroup">
+                <label for="reportStartDate">Start Date</label>
+                <input type="date" id="reportStartDate" class="form-control">
+              </div>
+              <div class="form-group hidden" id="reportEndDateGroup">
+                <label for="reportEndDate">End Date</label>
+                <input type="date" id="reportEndDate" class="form-control">
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem;">
+              <button type="submit" class="btn btn-primary"><i data-lucide="filter" style="width: 16px;"></i> Apply Filter</button>
+              <button type="button" id="btnResetReportFilters" class="btn btn-secondary"><i data-lucide="rotate-ccw" style="width: 16px;"></i> Reset</button>
+              <button type="button" id="btnToggleReportChart" class="btn btn-secondary" style="margin-left: auto;">
+                <i data-lucide="pie-chart" style="width: 16px;"></i> Show Chart Resume
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Section: Toggleable Chart (Hidden by default) -->
+        <div id="reportChartCard" class="glass">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3>Revenue Chart Resume</h3>
+            <button type="button" id="btnCloseReportChart" class="btn btn-danger btn-sm" style="padding: 4px 8px; font-size: 12px; display: inline-flex; align-items: center;"><i data-lucide="x" style="width: 14px;"></i> Close</button>
+          </div>
+          <div class="chart-container-large">
             <canvas id="reportChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Section: Monthly Summary Table -->
+        <div class="glass p-6">
+          <h3 style="margin-bottom: 1rem;">Monthly Summary Report</h3>
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th style="text-align: center;">Invoices Count</th>
+                  <th style="text-align: right;">Total Amount</th>
+                  <th style="text-align: right;">Total Paid</th>
+                  <th style="text-align: right;">Remaining Balance</th>
+                </tr>
+              </thead>
+              <tbody id="reportTableBody">
+                <!-- dynamic rows will be rendered here -->
+              </tbody>
+              <tfoot>
+                <tr id="reportTableTotalRow" style="font-weight: bold; border-top: 2px solid var(--color-border); background: rgba(255,255,255,0.03);">
+                  <!-- total row will be rendered here -->
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
       </section>
@@ -683,10 +771,10 @@
           <h4 class="mt-6 mb-2" style="font-size: 14px; font-weight: 600; color: var(--color-primary);">Edit Item Menu</h4>
           <div style="display: flex; gap: 8px; align-items: flex-end; margin-bottom: 12px;">
             <div class="form-group" style="flex: 1; margin-bottom: 0;">
-              <select id="editInvMenuSelect" style="padding: 0.5rem 1rem;">
-                <option value="">-- Pilih Menu --</option>
+              <input type="text" list="editInvMenuOptions" id="editInvMenuSelect" placeholder="-- Ketik atau Pilih Menu --" class="form-control" autocomplete="off" style="padding: 0.5rem 1rem; width: 100%;">
+              <datalist id="editInvMenuOptions">
                 <!-- Populated dynamically -->
-              </select>
+              </datalist>
             </div>
             <div class="form-group" style="width: 80px; margin-bottom: 0;">
               <input type="number" id="editInvMenuQty" value="1" min="1" style="padding: 0.5rem 1rem;">
@@ -695,7 +783,7 @@
           </div>
           
           <div class="table-responsive" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px; border: 1px solid var(--color-border); border-radius: 6px;">
-            <table class="table" style="font-size: 12px;">
+            <table class="table table-bordered invoice-items-table">
               <thead>
                 <tr>
                   <th>Item</th>
@@ -712,9 +800,29 @@
             </table>
           </div>
           
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid var(--color-border);">
-            <span style="font-size: 13px; font-weight: 500;">Grand Total:</span>
-            <span id="editInvGrandTotal" style="font-size: 15px; font-weight: 700; color: var(--color-primary);">Rp 0</span>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid var(--color-border);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13px; font-weight: 500;">Subtotal:</span>
+              <span id="editInvSubtotal" style="font-size: 13px; font-weight: 500;">Rp 0</span>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 13px; font-weight: 500;">Diskon:</span>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <select id="editInvDiscountType" class="form-control" style="width: 70px; padding: 2px 4px; font-size: 12px;">
+                  <option value="none">Tidak</option>
+                  <option value="percent">%</option>
+                  <option value="nominal">Rp</option>
+                </select>
+                <input type="number" id="editInvDiscountValue" value="0" min="0" class="form-control" style="width: 90px; padding: 2px 4px; font-size: 12px; display: none;">
+                <span id="editInvDiscountLabel" style="font-size: 12px; font-weight: 500; color: var(--color-danger); display: none;">- Rp 0</span>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px;">
+              <span style="font-size: 13px; font-weight: 600;">Grand Total:</span>
+              <span id="editInvGrandTotal" style="font-size: 15px; font-weight: 700; color: var(--color-primary);">Rp 0</span>
+            </div>
           </div>
           
           <button type="submit" class="btn btn-primary btn-block">Simpan Perubahan</button>
@@ -966,18 +1074,28 @@
         <!-- Right: Summary Box -->
         <div style="width: 280px; background: transparent; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between;">
           <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #475569;">
-            <span>Subtotal / Grand Total</span>
-            <strong style="color: #0f172a;" id="pdfGrandTotal"></strong>
+            <span>Subtotal</span>
+            <strong style="color: #0f172a;" id="pdfSubtotal">Rp 0</strong>
+          </div>
+          
+          <div id="pdfDiscountRow" style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #ef4444; display: none;">
+            <span>Diskon <span id="pdfDiscountInfo"></span></span>
+            <strong id="pdfDiscountAmount">- Rp 0</strong>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #475569; border-top: 1px dashed #e2e8f0;">
+            <span>Grand Total</span>
+            <strong style="color: #0f172a;" id="pdfGrandTotal">Rp 0</strong>
           </div>
           
           <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #475569; border-top: 1px dashed #e2e8f0;">
             <span>Paid Amount (DP)</span>
-            <strong style="color: #10b981;" id="pdfPaidAmount"></strong>
+            <strong style="color: #10b981;" id="pdfPaidAmount">Rp 0</strong>
           </div>
           
           <div style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; font-weight: 700; border-top: 2px solid #e2e8f0; margin-top: 4px;">
             <span style="color: #0f172a;">Remaining Balance</span>
-            <strong style="color: #ef4444; font-size: 14px;" id="pdfRemainingBalance"></strong>
+            <strong style="color: #ef4444; font-size: 14px;" id="pdfRemainingBalance">Rp 0</strong>
           </div>
         </div>
       </div>

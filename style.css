@@ -327,12 +327,21 @@ input:focus, select:focus, textarea:focus {
 }
 .view {
   display: none;
-  animation: fadeIn 0.3s ease;
 }
 .view.active {
   display: block;
+  animation: slideFadeIn 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 
 .page-header {
   display: flex;
@@ -414,9 +423,11 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--color-border);
 }
 .table th {
-  font-weight: 500;
-  color: var(--color-text-muted);
-  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 .table tr:last-child td { border-bottom: none; }
 
@@ -604,7 +615,7 @@ body.light-theme .nav-link.active {
 }
 
 body.light-theme .table th {
-  color: #475569; /* Slate 600 */
+  color: #c59b27; /* Darker gold for light theme */
 }
 
 body.light-theme .table td {
@@ -683,6 +694,25 @@ body.light-theme .table-bordered th {
   border-bottom: none !important;
 }
 
+/* Invoice Input Table Specific Styles (Uniform Font & Header Background) */
+.invoice-items-table, 
+.invoice-items-table th, 
+.invoice-items-table td, 
+.invoice-items-table tfoot td,
+.invoice-items-table input,
+.invoice-items-table select {
+  font-size: 0.9rem !important; /* Uniform font size */
+}
+.invoice-items-table th {
+  background: rgba(212, 175, 55, 0.08) !important; /* Premium gold-tint background for header */
+  color: var(--color-primary);
+  text-transform: none !important; /* Keep capitalization normal as requested */
+  letter-spacing: 0 !important;
+}
+body.light-theme .invoice-items-table th {
+  background: rgba(212, 175, 55, 0.15) !important;
+}
+
 /* Premium Top Horizontal Navbar (Tab Navigation) */
 .app-navbar {
   position: fixed !important;
@@ -726,10 +756,23 @@ body.light-theme .table-bordered th {
   padding: 4px !important;
   border-radius: 12px !important;
   border: 1px solid var(--color-border) !important;
+  position: relative !important;
 }
 
 body.light-theme .navbar-tabs {
   background: rgba(0, 0, 0, 0.03) !important;
+}
+
+.nav-indicator {
+  position: absolute !important;
+  top: 4px !important;
+  left: 4px;
+  height: calc(100% - 8px) !important;
+  background: var(--color-primary) !important;
+  border-radius: 8px !important;
+  transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  z-index: 1 !important;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2) !important;
 }
 
 .nav-tab {
@@ -741,9 +784,11 @@ body.light-theme .navbar-tabs {
   border-radius: 8px !important;
   font-size: 13px !important;
   font-weight: 500 !important;
-  transition: all 0.25s ease !important;
+  transition: color 0.25s ease !important;
   text-decoration: none !important;
   white-space: nowrap !important;
+  position: relative !important;
+  z-index: 2 !important;
 }
 
 .nav-tab i {
@@ -753,19 +798,17 @@ body.light-theme .navbar-tabs {
 
 .nav-tab:hover {
   color: #fff !important;
-  background: rgba(255, 255, 255, 0.05) !important;
 }
 
 body.light-theme .nav-tab:hover {
   color: var(--color-primary) !important;
-  background: rgba(0, 0, 0, 0.05) !important;
 }
 
 .nav-tab.active {
-  background: var(--color-primary) !important;
+  background: transparent !important;
   color: #000 !important;
   font-weight: 600 !important;
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2) !important;
+  box-shadow: none !important;
 }
 
 .navbar-right {
@@ -849,19 +892,349 @@ body.light-theme .navbar-user:hover {
   transition: all 0.3s ease !important;
 }
 
+/* Premium Scrollbar for Tables and scrollable elements */
+.table-responsive {
+  width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  border-radius: 8px !important;
+}
+.table-responsive::-webkit-scrollbar {
+  height: 6px !important;
+}
+.table-responsive::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-radius: 3px !important;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.2) !important;
+  border-radius: 3px !important;
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.4) !important;
+}
+body.light-theme .table-responsive::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
+body.light-theme .table-responsive::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.3) !important;
+}
+
+/* ==========================================================================
+   Responsive Layout & Media Queries
+   ========================================================================== */
+
 @media (max-width: 1200px) {
+  .app-navbar {
+    height: 64px !important;
+    padding: 0 1rem !important;
+    flex-direction: row !important;
+    position: fixed !important;
+    gap: 8px !important;
+  }
+  .brand-title-navbar {
+    font-size: 1.1rem !important;
+  }
+  .navbar-tabs {
+    flex: 1 !important;
+    min-width: 0 !important;
+    margin: 0 1rem !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 4px 6px !important;
+    scrollbar-width: thin !important; /* Firefox */
+  }
+  .navbar-tabs::-webkit-scrollbar {
+    height: 4px !important;
+    display: block !important;
+  }
+  .navbar-tabs::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border-radius: 2px !important;
+  }
+  .navbar-tabs::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.3) !important;
+    border-radius: 2px !important;
+  }
+  .nav-tab {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    flex-shrink: 0 !important;
+  }
+  .navbar-right {
+    gap: 8px !important;
+  }
+  .user-details-navbar {
+    display: none !important; /* Hide text details to maintain horizontal layout in split view */
+  }
+  .navbar-user {
+    padding: 6px !important;
+  }
+  .divider-vertical {
+    display: none !important;
+  }
+  .main-content {
+    padding: 5.5rem 1.5rem 1.5rem 1.5rem !important; /* Spacing for compact layout */
+  }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important; /* Balanced 2x2 stats layout in split screen */
+    gap: 1rem !important;
+  }
+  .dashboard-widgets {
+    grid-template-columns: 1fr !important; /* Stack widgets vertically for chart readability */
+  }
+  .dashboard-widgets .widget {
+    grid-column: span 1 !important;
+  }
+}
+
+@media (max-width: 768px) {
   .app-navbar {
     flex-direction: column !important;
     height: auto !important;
     padding: 1rem !important;
     gap: 12px !important;
-    position: relative !important;
+    position: relative !important; /* Collapse header fixed behavior on mobile */
   }
   .main-content {
-    padding-top: 2rem !important;
+    padding: 1.5rem 1rem 1.5rem 1rem !important; /* Adjust offset for mobile column collapse */
   }
-  .navbar-tabs {
-    flex-wrap: wrap !important;
+
+  /* Compact Tables for Mobile */
+  .table th, .table td {
+    padding: 0.75rem 0.5rem !important;
+    font-size: 0.8rem !important;
+  }
+  
+  /* Stacked Page Header */
+  .page-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    margin-bottom: 1.5rem !important;
+  }
+  .page-header div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  .page-header button, 
+  .page-header .btn {
+    flex: 1 !important;
+    min-width: 110px !important;
     justify-content: center !important;
+  }
+
+  /* Form & Input Grid adjustments */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .form-grid .form-group {
+    grid-column: span 1 !important;
+  }
+  .menu-selection {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .menu-selection .form-group {
+    width: 100% !important;
+  }
+  .menu-selection button {
+    width: 100% !important;
+  }
+
+  /* Schedule layout page */
+  .schedule-dashboard-layout {
+    flex-direction: column !important;
+    gap: 24px !important;
+  }
+  .schedule-details-container {
+    border-left: none !important;
+    padding-left: 0 !important;
+    border-top: 1px solid var(--color-border) !important;
+    padding-top: 24px !important;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Navbar adjustments */
+  .navbar-right {
+    width: 100% !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+  .navbar-lang {
+    gap: 4px !important;
+    padding: 2px !important;
+  }
+  .lang-flag-btn {
+    padding: 4px 6px !important;
+    font-size: 13px !important;
+  }
+  .user-details-navbar {
+    display: none !important; /* Hide user text info */
+  }
+  .navbar-user {
+    padding: 6px !important;
+  }
+  .divider-vertical {
+    display: none !important;
+  }
+
+  /* Stat cards - 2x2 grid */
+  .stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+    margin-bottom: 1.5rem !important;
+  }
+  .stat-card {
+    padding: 1rem !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .stat-icon {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 8px !important;
+  }
+  .stat-icon i {
+    width: 18px !important;
+    height: 18px !important;
+  }
+  .stat-content p {
+    font-size: 1.15rem !important;
+  }
+
+  /* Dashboard widget layouts */
+  .dashboard-widgets {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  .dashboard-widgets .widget {
+    grid-column: span 1 !important;
+    padding: 1rem !important;
+  }
+
+  /* Modals spacing */
+  .modal {
+    margin: 8px !important;
+    max-width: calc(100% - 16px) !important;
+  }
+  .modal-header, .modal-body {
+    padding: 1rem !important;
+  }
+
+  /* Settings Page flex lists */
+  .glass div[style*="display: flex"] {
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+  #settingLogoUrl {
+    flex: 1 1 100% !important;
+  }
+
+  /* PDF Print Preview scroll control */
+  #pdfTemplateWrapper .modal-body {
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    padding: 12px !important;
+  }
+  #pdfContent {
+    margin: 0 auto !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Reports Page Styles */
+#reportChartCard {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0 1.5rem !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.3s ease, 
+              padding 0.4s ease, 
+              margin 0.4s ease,
+              border-width 0.4s ease;
+}
+#reportChartCard.show {
+  max-height: 500px;
+  opacity: 1;
+  padding: 1.5rem !important;
+  margin-top: 0 !important;
+  margin-bottom: 1.5rem !important;
+  border-top-width: 1px !important;
+  border-bottom-width: 1px !important;
+}
+
+/* Invoice Section Box grouping Select Menu items and table */
+.invoice-section-box {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+body.light-theme .invoice-section-box {
+  background: rgba(0, 0, 0, 0.01);
+}
+#invPaidAmount {
+  width: 150px !important;
+  padding: 4px 8px !important;
+  display: inline-block !important;
+}
+
+@media (max-width: 1024px) {
+  /* Split screen brand logo spacing */
+  .brand-title-navbar {
+    font-size: 1rem !important;
+  }
+  
+  /* Compact Language switcher flags in split view */
+  .lang-flag-btn span:last-child {
+    display: none !important;
+  }
+  .lang-flag-btn {
+    padding: 4px 6px !important;
+  }
+  
+  /* Compact Logout button in split view */
+  #btnLogout span[data-lang-key="logoutLabel"] {
+    display: none !important;
+  }
+  #btnLogout {
+    padding: 8px !important;
+    width: 36px !important;
+    height: 36px !important;
+    justify-content: center !important;
+  }
+  
+  /* Form & Input grid collapse in split screen view */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .form-grid .form-group {
+    grid-column: span 1 !important;
+  }
+  
+  /* Compact Table formatting to prevent split screen cutoff */
+  .table th, .table td {
+    padding: 0.75rem 0.5rem !important;
+    font-size: 0.85rem !important;
   }
 }
