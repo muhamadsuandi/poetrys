@@ -1238,3 +1238,40 @@ body.light-theme .invoice-section-box {
     font-size: 0.85rem !important;
   }
 }
+
+/* Custom Search Input Wrapper styles */
+.search-input-wrapper {
+  position: relative;
+  display: block;
+}
+.search-input-wrapper input {
+  padding-left: 2.5rem !important;
+  cursor: pointer;
+}
+.search-input-wrapper .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+/* Modal checklist table selected rows highlight */
+.menu-checked-row {
+  background: rgba(212, 175, 55, 0.04) !important;
+}
+body.light-theme .menu-checked-row {
+  background: rgba(212, 175, 55, 0.08) !important;
+}
+
+/* Clean quantity input for the modal table */
+.menu-modal-qty-input {
+  width: 75px !important;
+  padding: 4px 8px !important;
+  text-align: center !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+}

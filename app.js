@@ -141,6 +141,14 @@ const app = {
     invoiceNumber: ''
   },
 
+  menuModalState: {
+    target: 'create', // 'create' or 'edit'
+    searchQuery: '',
+    currentPage: 1,
+    perPage: 10,
+    selectedItems: {} // Map of menuId -> { qty, checked }
+  },
+
   reportState: {
     filterType: 'year', // 'year' or 'range'
     selectedYear: new Date().getFullYear(),
@@ -1354,10 +1362,7 @@ const app = {
 
   renderCreateInvoiceInit() {
     const select = document.getElementById('invMenuSelect');
-    select.innerHTML = '<option value="">-- Choose Menu --</option>';
-    this.data.menus.forEach(m => {
-      select.innerHTML += `<option value="${m.id}">${m.name}</option>`;
-    });
+    if (select) select.value = '';
     
     document.getElementById('invEditId').value = '';
     document.getElementById('invCustomerName').value = '';
@@ -1390,14 +1395,9 @@ const app = {
     const inv = this.data.invoices.find(i => i.id == id);
     if (!inv) return;
     
-    // Populate menus dropdown for the edit modal
+    // Clear menu selection trigger text for the edit modal
     const select = document.getElementById('editInvMenuSelect');
-    if (select) {
-      select.innerHTML = '<option value="">-- Pilih Menu --</option>';
-      this.data.menus.forEach(m => {
-        select.innerHTML += `<option value="${m.id}">${m.name}</option>`;
-      });
-    }
+    if (select) select.value = '';
 
     document.getElementById('editInvId').value = inv.id;
     document.getElementById('editInvCustomerName').value = inv.customerName || '';
@@ -3130,6 +3130,236 @@ const app = {
     reader.readAsArrayBuffer(file);
   },
 
+  openMenuSelection(target) {
+    this.menuModalState.target = target;
+    this.menuModalState.searchQuery = '';
+    this.menuModalState.currentPage = 1;
+    this.menuModalState.selectedItems = {};
+    
+    // Set title depending on target
+    const modalTitle = document.getElementById('menuSelectionModalTitle');
+    if (modalTitle) {
+      modalTitle.textContent = target === 'create' ? 'Pilih Menu Catering (Invoice Baru)' : 'Pilih Menu Catering (Edit Invoice)';
+    }
+
+    // Pre-populate with currently active invoice items if any (so they are checked)
+    const activeItems = target === 'create' ? this.currentInvoice.items : this.editInvoiceState.items;
+    (activeItems || []).forEach(item => {
+      this.menuModalState.selectedItems[item.menuId] = {
+        qty: item.qty,
+        checked: true
+      };
+    });
+
+    const searchInput = document.getElementById('menuModalSearch');
+    if (searchInput) searchInput.value = '';
+
+    this.openModal('menuSelectionModal');
+    this.renderMenuModalList();
+    lucide.createIcons();
+  },
+
+  filterMenuModalList() {
+    const searchInput = document.getElementById('menuModalSearch');
+    this.menuModalState.searchQuery = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    this.menuModalState.currentPage = 1;
+    this.renderMenuModalList();
+  },
+
+  toggleMenuModalItem(menuId, checked) {
+    if (!this.menuModalState.selectedItems[menuId]) {
+      this.menuModalState.selectedItems[menuId] = { qty: 1, checked: false };
+    }
+    this.menuModalState.selectedItems[menuId].checked = checked;
+    
+    // Highlight row
+    const row = document.getElementById(`menu-row-${menuId}`);
+    const qtyInput = document.getElementById(`menu-qty-${menuId}`);
+    if (checked) {
+      if (row) row.classList.add('menu-checked-row');
+      if (qtyInput) qtyInput.removeAttribute('disabled');
+    } else {
+      if (row) row.classList.remove('menu-checked-row');
+      if (qtyInput) qtyInput.setAttribute('disabled', 'true');
+    }
+  },
+
+  updateMenuModalItemQty(menuId, qty) {
+    if (!this.menuModalState.selectedItems[menuId]) {
+      this.menuModalState.selectedItems[menuId] = { qty: 1, checked: false };
+    }
+    this.menuModalState.selectedItems[menuId].qty = Math.max(1, parseInt(qty) || 1);
+  },
+
+  renderMenuModalList() {
+    const tbody = document.getElementById('menuModalList');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const query = this.menuModalState.searchQuery;
+    let filtered = this.data.menus.filter(m => {
+      if (!query) return true;
+      return m.name.toLowerCase().includes(query) || (m.description && m.description.toLowerCase().includes(query));
+    });
+
+    const totalItems = filtered.length;
+    const totalPages = Math.ceil(totalItems / this.menuModalState.perPage) || 1;
+
+    if (this.menuModalState.currentPage > totalPages) {
+      this.menuModalState.currentPage = totalPages;
+    }
+
+    const startIndex = (this.menuModalState.currentPage - 1) * this.menuModalState.perPage;
+    const endIndex = startIndex + this.menuModalState.perPage;
+    const pageItems = filtered.slice(startIndex, endIndex);
+
+    if (pageItems.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 30px; color: var(--color-text-muted);">
+            Tidak ada menu yang cocok.
+          </td>
+        </tr>
+      `;
+    } else {
+      pageItems.forEach(m => {
+        const state = this.menuModalState.selectedItems[m.id] || { qty: 1, checked: false };
+        const checkedAttr = state.checked ? 'checked' : '';
+        const disabledAttr = state.checked ? '' : 'disabled';
+        const rowClass = state.checked ? 'class="menu-checked-row"' : '';
+
+        tbody.innerHTML += `
+          <tr id="menu-row-${m.id}" ${rowClass}>
+            <td style="text-align: center; vertical-align: middle;">
+              <input type="checkbox" id="menu-check-${m.id}" ${checkedAttr} onchange="app.toggleMenuModalItem('${m.id}', this.checked)" style="width: 18px; height: 18px; cursor: pointer;">
+            </td>
+            <td style="vertical-align: middle;">
+              <label for="menu-check-${m.id}" style="cursor: pointer; font-weight: 500; display: block; margin-bottom: 0;">${m.name}</label>
+              ${m.description ? `<small style="display: block; color: var(--color-text-muted); font-size: 11px;">${m.description}</small>` : ''}
+            </td>
+            <td style="text-align: right; vertical-align: middle; font-weight: 600;">${this.formatCurrency(m.price)}</td>
+            <td style="text-align: center; vertical-align: middle;"><span class="badge" style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 4px;">${m.unit || 'pax'}</span></td>
+            <td style="text-align: center; vertical-align: middle;">
+              <input type="number" id="menu-qty-${m.id}" value="${state.qty}" min="1" ${disabledAttr} oninput="app.updateMenuModalItemQty('${m.id}', this.value)" class="menu-modal-qty-input">
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    this.renderMenuModalPagination(totalPages, totalItems);
+    lucide.createIcons();
+  },
+
+  renderMenuModalPagination(totalPages, totalItems) {
+    const pagDiv = document.getElementById('menuModalPagination');
+    if (!pagDiv) return;
+    pagDiv.innerHTML = '';
+
+    const startItem = (this.menuModalState.currentPage - 1) * this.menuModalState.perPage + 1;
+    const endItem = Math.min(this.menuModalState.currentPage * this.menuModalState.perPage, totalItems);
+
+    const infoText = `Menampilkan ${totalItems > 0 ? startItem : 0} sampai ${endItem} dari ${totalItems} menu`;
+
+    const infoSpan = document.createElement('span');
+    infoSpan.style.fontSize = '12px';
+    infoSpan.style.color = 'var(--color-text-muted)';
+    infoSpan.textContent = infoText;
+    pagDiv.appendChild(infoSpan);
+
+    const btnGroup = document.createElement('div');
+    btnGroup.style.display = 'flex';
+    btnGroup.style.gap = '4px';
+
+    // Prev
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'btn btn-secondary btn-sm';
+    prevBtn.style.padding = '4px 8px';
+    prevBtn.disabled = this.menuModalState.currentPage === 1;
+    prevBtn.innerHTML = '<i data-lucide="chevron-left" style="width:14px; height:14px;"></i>';
+    prevBtn.onclick = () => {
+      if (this.menuModalState.currentPage > 1) {
+        this.menuModalState.currentPage--;
+        this.renderMenuModalList();
+      }
+    };
+    btnGroup.appendChild(prevBtn);
+
+    // Page Numbers
+    const maxVisible = 5;
+    let startPage = Math.max(1, this.menuModalState.currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    if (endPage - startPage + 1 < maxVisible) {
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.className = i === this.menuModalState.currentPage ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+      pageBtn.style.padding = '4px 10px';
+      pageBtn.style.fontSize = '11px';
+      pageBtn.textContent = i;
+      pageBtn.onclick = () => {
+        this.menuModalState.currentPage = i;
+        this.renderMenuModalList();
+      };
+      btnGroup.appendChild(pageBtn);
+    }
+
+    // Next
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'btn btn-secondary btn-sm';
+    nextBtn.style.padding = '4px 8px';
+    nextBtn.disabled = this.menuModalState.currentPage === totalPages;
+    nextBtn.innerHTML = '<i data-lucide="chevron-right" style="width:14px; height:14px;"></i>';
+    nextBtn.onclick = () => {
+      if (this.menuModalState.currentPage < totalPages) {
+        this.menuModalState.currentPage++;
+        this.renderMenuModalList();
+      }
+    };
+    btnGroup.appendChild(nextBtn);
+
+    pagDiv.appendChild(btnGroup);
+  },
+
+  confirmMenuSelection() {
+    const selected = this.menuModalState.selectedItems;
+    const target = this.menuModalState.target;
+    
+    // Clear the active array so we overwrite it with selected items
+    let targetArray = [];
+    
+    // Find each checked menu item
+    Object.keys(selected).forEach(menuId => {
+      const itemState = selected[menuId];
+      if (itemState.checked) {
+        const menu = this.data.menus.find(m => m.id == menuId);
+        if (menu) {
+          targetArray.push({
+            menuId: menu.id,
+            name: menu.name,
+            price: Number(menu.price) || 0,
+            unit: menu.unit || 'pax',
+            qty: Number(itemState.qty) || 1,
+            subtotal: (Number(menu.price) || 0) * (Number(itemState.qty) || 1)
+          });
+        }
+      }
+    });
+
+    if (target === 'create') {
+      this.currentInvoice.items = targetArray;
+      this.updateInvoiceItemsTable();
+    } else {
+      this.editInvoiceState.items = targetArray;
+      this.updateEditInvoiceItemsTable();
+    }
+
+    this.closeModal('menuSelectionModal');
+    this.showAlert("Menu katering berhasil ditambahkan ke invoice!", "success");
+  },
+
   bindEvents() {
     // Navigation
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -3165,7 +3395,6 @@ const app = {
     document.getElementById('userForm').addEventListener('submit', (e) => this.saveUser(e));
     
     // Invoice events
-    document.getElementById('btnAddMenuItem').addEventListener('click', () => this.addInvoiceItem());
     document.getElementById('btnSaveInvoice').addEventListener('click', () => this.saveInvoice());
     
     // Create Invoice Discount listeners
