@@ -1275,3 +1275,66 @@ body.light-theme .menu-checked-row {
   border-radius: 4px !important;
   font-weight: 600 !important;
 }
+
+/* ==========================================================================
+   Comprehensive Mobile & Split-Screen Fixes (max-width: 600px)
+   ========================================================================== */
+@media (max-width: 600px) {
+  /* Modals: Ensure titles don't collide with close buttons and padding is compact */
+  .modal-header h2, .modal-header h3 {
+    font-size: 1.1rem !important;
+    line-height: 1.2 !important;
+  }
+  .modal-header, .modal-body {
+    padding: 1rem !important;
+  }
+  
+  /* Modal Action Buttons: Stack them if needed */
+  .form-actions, .modal-body .form-actions {
+    flex-direction: column-reverse !important; /* Primary action on top */
+    gap: 8px !important;
+  }
+  .form-actions button {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  /* Invoice/Menu Select Triggers: Stack inputs and buttons */
+  .invoice-section-box > div[style*="display: flex"] {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+  .invoice-section-box button {
+    width: 100% !important;
+  }
+
+  /* Menu Selection Modal specific mobile tweaks */
+  #menuSelectionModal .modal-body {
+    padding: 12px !important;
+  }
+  #menuModalPagination {
+    flex-direction: column !important;
+    gap: 12px !important;
+    align-items: center !important;
+  }
+  #menuModalPagination > span {
+    text-align: center;
+  }
+  
+  /* Tables: Force minimum widths to allow smooth horizontal scrolling, avoid squishing */
+  .table-responsive {
+    margin-bottom: 1rem !important;
+    border-radius: 8px !important;
+  }
+  .table th, .table td {
+    padding: 0.5rem !important; /* Even tighter padding for split screen */
+    white-space: nowrap !important; /* Prevent awkward wrapping in tiny cells */
+  }
+  
+  /* Fix Action Buttons in Invoice Table rows */
+  .table td > div[style*="display:flex"] {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
