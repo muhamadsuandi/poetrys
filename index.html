@@ -282,23 +282,23 @@
             <input type="hidden" id="invEditId" value="">
             <div class="form-grid">
               <div class="form-group">
-                <label>Customer Name</label>
+                <label>Customer Name <span style="color: var(--color-danger);">*</span></label>
                 <input type="text" id="invCustomerName" placeholder="John Doe" required>
               </div>
               <div class="form-group">
-                <label>Customer Phone</label>
+                <label>Customer Phone <span style="color: var(--color-danger);">*</span></label>
                 <input type="text" id="invCustomerPhone" placeholder="0812..." required>
               </div>
               <div class="form-group" style="grid-column: span 2;">
-                <label>Catering Location</label>
+                <label>Catering Location <span style="color: var(--color-danger);">*</span></label>
                 <input type="text" id="invCateringLocation" placeholder="Alamat lengkap..." required>
               </div>
               <div class="form-group">
-                <label>Catering Date (Schedule)</label>
+                <label>Catering Date (Schedule) <span style="color: var(--color-danger);">*</span></label>
                 <input type="date" id="invCateringDate" required>
               </div>
               <div class="form-group">
-                <label>Invoice Date</label>
+                <label>Invoice Date <span style="color: var(--color-danger);">*</span></label>
                 <input type="date" id="invDateCreated" required>
               </div>
             </div>
@@ -679,15 +679,15 @@
         <form id="menuForm">
           <input type="hidden" id="menuId">
           <div class="form-group">
-            <label>Menu Name</label>
+            <label>Menu Name <span style="color: var(--color-danger);">*</span></label>
             <input type="text" id="menuName" required>
           </div>
           <div class="form-group">
-            <label>Price (Rp)</label>
+            <label>Price (Rp) <span style="color: var(--color-danger);">*</span></label>
             <input type="number" id="menuPrice" required min="0">
           </div>
           <div class="form-group">
-            <label>Unit (e.g. pax, box, porsi, tumpeng)</label>
+            <label>Unit (e.g. pax, box, porsi, tumpeng) <span style="color: var(--color-danger);">*</span></label>
             <input type="text" id="menuUnit" placeholder="e.g. pax" required>
           </div>
           <div class="form-group">
@@ -710,11 +710,11 @@
         <form id="userForm">
           <input type="hidden" id="userId">
           <div class="form-group">
-            <label>Username</label>
+            <label>Username <span style="color: var(--color-danger);">*</span></label>
             <input type="text" id="userName" required>
           </div>
           <div class="form-group">
-            <label>Password</label>
+            <label>Password <span style="color: var(--color-danger);">*</span></label>
             <input type="text" id="userPassword" required>
           </div>
           <div class="form-group">
@@ -742,23 +742,23 @@
           <input type="hidden" id="editInvId">
           <div class="form-grid">
             <div class="form-group">
-              <label>Customer Name</label>
+              <label>Customer Name <span style="color: var(--color-danger);">*</span></label>
               <input type="text" id="editInvCustomerName" required>
             </div>
             <div class="form-group">
-              <label>Customer Phone</label>
+              <label>Customer Phone <span style="color: var(--color-danger);">*</span></label>
               <input type="text" id="editInvCustomerPhone" required>
             </div>
             <div class="form-group" style="grid-column: span 2;">
-              <label>Catering Location</label>
+              <label>Catering Location <span style="color: var(--color-danger);">*</span></label>
               <input type="text" id="editInvCateringLocation" required>
             </div>
             <div class="form-group">
-              <label>Catering Date</label>
+              <label>Catering Date <span style="color: var(--color-danger);">*</span></label>
               <input type="date" id="editInvCateringDate" required>
             </div>
             <div class="form-group">
-              <label>Uang Muka (DP) / Dibayar (Rp)</label>
+              <label>Uang Muka (DP) / Dibayar (Rp) <span style="color: var(--color-danger);">*</span></label>
               <input type="number" id="editInvPaidAmount" min="0" required>
             </div>
           </div>
@@ -834,18 +834,18 @@
         <form id="addScheduleForm">
           <input type="hidden" id="scheduleId">
           <div class="form-group">
-            <label>Tipe Jadwal</label>
+            <label>Tipe Jadwal <span style="color: var(--color-danger);">*</span></label>
             <select id="scheduleType" required>
               <option value="Booking">Catering Booking</option>
               <option value="Meeting">Meeting</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Nama Acara / Klien</label>
+            <label>Nama Acara / Klien <span style="color: var(--color-danger);">*</span></label>
             <input type="text" id="scheduleTitle" placeholder="Cth: Wedding Bpk. Budi" required>
           </div>
           <div class="form-group">
-            <label>Tanggal Acara / Meeting</label>
+            <label>Tanggal Acara / Meeting <span style="color: var(--color-danger);">*</span></label>
             <input type="date" id="scheduleDate" required>
           </div>
           <div class="form-group">
@@ -874,21 +874,21 @@
       <div class="modal-body">
         <form id="profileForm" onsubmit="app.saveProfile(event)">
           <div class="form-group">
-            <label>Nama Lengkap</label>
+            <label>Nama Lengkap <span style="color: var(--color-danger);">*</span></label>
             <div class="input-wrapper">
               <i data-lucide="user-check"></i>
               <input type="text" id="profileName" placeholder="Nama Lengkap Anda" required style="padding-left: 2.75rem;">
             </div>
           </div>
           <div class="form-group">
-            <label>Username</label>
+            <label>Username <span style="color: var(--color-danger);">*</span></label>
             <div class="input-wrapper">
               <i data-lucide="user"></i>
               <input type="text" id="profileUsername" placeholder="Username" required style="padding-left: 2.75rem;">
             </div>
           </div>
           <div class="form-group">
-            <label>Password</label>
+            <label>Password <span style="color: var(--color-danger);">*</span></label>
             <div class="input-wrapper">
               <i data-lucide="lock"></i>
               <input type="password" id="profilePassword" placeholder="Password Baru" required style="padding-left: 2.75rem;">
@@ -939,7 +939,7 @@
           
           <div class="form-group">
             <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span>Nominal Pembayaran (Rp)</span>
+              <span>Nominal Pembayaran (Rp) <span style="color: var(--color-danger);">*</span></span>
               <button type="button" class="btn btn-secondary btn-sm" onclick="app.autoFillPayoff()" style="padding: 2px 8px; font-size: 11px; border-radius: 4px;">Lunasi Semua</button>
             </label>
             <div class="input-wrapper">
@@ -1150,3 +1150,4 @@
   <script defer src="app.js"></script>
 </body>
 </html>
+

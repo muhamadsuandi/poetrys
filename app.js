@@ -370,12 +370,16 @@ const app = {
   // === Authentication ===
   checkAuth() {
     const userJson = localStorage.getItem('currentUser');
-    if (userJson) {
+    const token = localStorage.getItem('sessionToken');
+    if (userJson && token) {
       this.data.currentUser = JSON.parse(userJson);
       document.getElementById('pageLogin').classList.add('hidden');
       document.getElementById('appLayout').classList.remove('hidden');
       this.applyRoles();
     } else {
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('sessionToken');
+      this.data.currentUser = null;
       document.getElementById('pageLogin').classList.remove('hidden');
       document.getElementById('appLayout').classList.add('hidden');
     }
@@ -394,54 +398,55 @@ const app = {
     });
   },
 
-  async logout() {
+    async logout() {
     if (await this.showConfirm("Apakah Anda yakin ingin keluar?", "Konfirmasi Keluar")) {
       localStorage.removeItem('currentUser');
+      localStorage.removeItem('sessionToken');
       this.data.currentUser = null;
       this.checkAuth();
     }
   },
 
+  async hashPassword(password) {
+    if (!password) return '';
+    const msgBuffer = new TextEncoder().encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  },
+
   async login(username, password) {
     this.showLoading(true);
+    document.getElementById('loginError').classList.add('hidden');
     
-    // Fallback default admin
-    if (username === 'admin' && password === 'admin123') {
-      const user = { id: 1, username: 'admin', role: 'admin' };
-      localStorage.setItem('currentUser', JSON.stringify(user));
-      this.data.currentUser = user;
-      setTimeout(() => {
-        this.showLoading(false);
-        this.checkAuth();
-        this.loadData().then(() => this.navigate('dashboard'));
-      }, 500);
-      return;
-    }
-
     try {
-      let usersToCheck = [];
+      const passwordHash = await this.hashPassword(password);
       
       if (this.data.apiUrl) {
-        // Fetch fresh users from Google Sheets to ensure we have latest passwords
-        usersToCheck = await this.fetchData('Users');
+        const res = await fetch(`${this.data.apiUrl}?action=LOGIN`, {
+          method: 'POST',
+          body: JSON.stringify({ username, password: passwordHash })
+        });
+        const json = await res.json();
+        
+        if (json.status === 'success') {
+          localStorage.setItem('currentUser', JSON.stringify(json.user));
+          localStorage.setItem('sessionToken', json.token);
+          this.data.currentUser = json.user;
+          this.checkAuth();
+          await this.loadData();
+          this.navigate('dashboard');
+        } else {
+          document.getElementById('loginError').textContent = json.message || "Invalid username or password.";
+          document.getElementById('loginError').classList.remove('hidden');
+        }
       } else {
-        // Offline mode fallback
-        usersToCheck = JSON.parse(localStorage.getItem('users') || '[]');
-      }
-
-      const u = usersToCheck.find(x => x.username === username && x.password === password);
-      
-      if(u) {
-        localStorage.setItem('currentUser', JSON.stringify(u));
-        this.data.currentUser = u;
-        this.checkAuth();
-        await this.loadData();
-        this.navigate('dashboard');
-      } else {
+        document.getElementById('loginError').textContent = "API URL is missing. Secure login requires API.";
         document.getElementById('loginError').classList.remove('hidden');
       }
     } catch (e) {
       console.error("Login error:", e);
+      document.getElementById('loginError').textContent = "Connection error. Please try again.";
       document.getElementById('loginError').classList.remove('hidden');
     } finally {
       this.showLoading(false);
@@ -534,7 +539,7 @@ const app = {
     } else {
       // Load from Google Sheets
       try {
-        const res = await fetch(`${this.data.apiUrl}?action=GET_INIT_DATA`);
+        const res = await fetch(`${this.data.apiUrl}?action=GET_INIT_DATA&token=${localStorage.getItem('sessionToken') || ''}`);
         const json = await res.json();
         
         if (json.status === 'success' && json.data) {
@@ -555,7 +560,15 @@ const app = {
           this.data.schedules = json.data.Schedules || [];
           localStorage.setItem('schedules', JSON.stringify(this.data.schedules));
         } else {
-          throw new Error("Invalid response format");
+          if (json.message && json.message.includes("Unauthorized")) {
+             localStorage.removeItem('currentUser');
+             localStorage.removeItem('sessionToken');
+             this.data.currentUser = null;
+             this.checkAuth();
+             this.showAlert("Sesi Anda telah berakhir atau tidak valid. Silakan login kembali.", "warning");
+             return;
+          }
+          throw new Error(json.message || "Invalid response format");
         }
       } catch (e) {
         console.error("Error loading data", e);
@@ -576,7 +589,7 @@ const app = {
   async fetchData(sheet) {
     if(!this.data.apiUrl) return [];
     try {
-      const res = await fetch(`${this.data.apiUrl}?action=GET_ALL&sheet=${sheet}`);
+      const res = await fetch(`${this.data.apiUrl}?action=GET_ALL&sheet=${sheet}&token=${localStorage.getItem('sessionToken') || ''}`);
       const json = await res.json();
       if(json.status === 'success') return json.data;
       return [];
@@ -597,10 +610,7 @@ const app = {
     } else {
       // Save API
       try {
-        await fetch(`${this.data.apiUrl}?action=ADD_ROW&sheet=${sheet}`, {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
+        await fetch(`${this.data.apiUrl}?action=ADD_ROW&sheet=${sheet}`, { method: 'POST', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
         await this.loadData();
       } catch(e) {
         this.showAlert("Failed to save to database", "error");
@@ -622,10 +632,7 @@ const app = {
       }
     } else {
       try {
-        await fetch(`${this.data.apiUrl}?action=UPDATE_ROW&sheet=${sheet}`, {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
+        await fetch(`${this.data.apiUrl}?action=UPDATE_ROW&sheet=${sheet}`, { method: 'POST', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
         await this.loadData();
       } catch(e) {
         this.showAlert("Failed to update database", "error");
@@ -644,7 +651,7 @@ const app = {
       this.data[target] = items;
     } else {
       try {
-        await fetch(`${this.data.apiUrl}?action=DELETE_ROW&sheet=${sheet}&id=${id}`);
+        await fetch(`${this.data.apiUrl}?action=DELETE_ROW&sheet=${sheet}&id=${id}&token=${localStorage.getItem('sessionToken') || ''}`);
         await this.loadData();
       } catch(e) {
         this.showAlert("Failed to delete from database", "error");
@@ -837,8 +844,8 @@ const app = {
       const q = this.menuState.searchQuery;
       if (!q) return true;
 
-      const nameMatch = m.name && m.name.toLowerCase().includes(q);
-      const descMatch = m.description && m.description.toLowerCase().includes(q);
+      const nameMatch = m.name && String(m.name).toLowerCase().includes(q);
+      const descMatch = m.description && String(m.description).toLowerCase().includes(q);
       const idMatch = m.id && String(m.id).toLowerCase().includes(q);
 
       return nameMatch || descMatch || idMatch;
@@ -1032,6 +1039,9 @@ const app = {
         }
 
         let successCount = 0;
+        let skippedCount = 0;
+        let skippedNames = [];
+        
         for (let i = 0; i < json.length; i++) {
           const row = json[i];
           const name = row.name || row.Name || row.Nama || row.nama || row['Menu Name'] || row['Nama Menu'];
@@ -1039,12 +1049,21 @@ const app = {
           const description = row.description || row.Description || row.Deskripsi || row.deskripsi || '';
 
           if (!name) continue;
+          
+          const menuName = String(name).trim();
+          const existing = this.data.menus.find(m => String(m.name).toLowerCase() === menuName.toLowerCase());
+          
+          if (existing) {
+            skippedCount++;
+            skippedNames.push(menuName);
+            continue;
+          }
 
           const price = Number(String(priceStr).replace(/[^0-9.-]+/g, '')) || 0;
 
           const payload = {
             id: (Date.now() + i).toString(),
-            name: String(name).trim(),
+            name: menuName,
             price: price,
             description: String(description).trim()
           };
@@ -1053,7 +1072,11 @@ const app = {
           successCount++;
         }
 
-        this.showAlert(`Berhasil mengimpor ${successCount} menu baru dari file Excel!`, "success");
+        let alertMsg = `Berhasil mengimpor ${successCount} menu baru dari file Excel!`;
+        if (skippedCount > 0) {
+          alertMsg += `\n(${skippedCount} menu dilewati karena nama sudah ada: ${skippedNames.slice(0, 3).join(', ')}${skippedNames.length > 3 ? ', dll' : ''})`;
+        }
+        this.showAlert(alertMsg, "success");
         await this.loadData();
       } catch (err) {
         console.error(err);
@@ -1071,9 +1094,17 @@ const app = {
     e.preventDefault();
     const idField = document.getElementById('menuId').value;
     const isUpdate = !!idField;
+    const menuName = document.getElementById('menuName').value.trim();
+    
+    const existing = this.data.menus.find(m => String(m.name).toLowerCase() === menuName.toLowerCase() && m.id != idField);
+    if (existing) {
+      this.showAlert(`Menu dengan nama "${menuName}" sudah ada! Silakan gunakan nama lain.`, "warning");
+      return;
+    }
+    
     const payload = {
       id: isUpdate ? idField : Date.now().toString(),
-      name: document.getElementById('menuName').value,
+      name: menuName,
       price: document.getElementById('menuPrice').value,
       unit: document.getElementById('menuUnit').value,
       description: document.getElementById('menuDesc').value
@@ -1117,10 +1148,10 @@ const app = {
       const q = this.invoiceState.searchQuery;
       if (!q) return true;
 
-      const numMatch = inv.invoiceNumber && inv.invoiceNumber.toLowerCase().includes(q);
-      const nameMatch = inv.customerName && inv.customerName.toLowerCase().includes(q);
-      const locMatch = inv.cateringLocation && inv.cateringLocation.toLowerCase().includes(q);
-      const phoneMatch = inv.customerPhone && inv.customerPhone.toLowerCase().includes(q);
+      const numMatch = inv.invoiceNumber && String(inv.invoiceNumber).toLowerCase().includes(q);
+      const nameMatch = inv.customerName && String(inv.customerName).toLowerCase().includes(q);
+      const locMatch = inv.cateringLocation && String(inv.cateringLocation).toLowerCase().includes(q);
+      const phoneMatch = inv.customerPhone && String(inv.customerPhone).toLowerCase().includes(q);
       
       return numMatch || nameMatch || locMatch || phoneMatch;
     });
@@ -1533,9 +1564,9 @@ const app = {
     
     const payload = {
       ...inv,
-      customerName: document.getElementById('editInvCustomerName').value,
-      customerPhone: document.getElementById('editInvCustomerPhone').value,
-      cateringLocation: document.getElementById('editInvCateringLocation').value,
+      customerName: document.getElementById('editInvCustomerName').value.trim(),
+      customerPhone: document.getElementById('editInvCustomerPhone').value.trim(),
+      cateringLocation: document.getElementById('editInvCateringLocation').value.trim(),
       cateringDate: document.getElementById('editInvCateringDate').value,
       paidAmount: paidAmount,
       subtotalAmount: subtotalAmount,
@@ -1745,15 +1776,15 @@ const app = {
       return;
     }
     const editId = document.getElementById('invEditId').value;
-    const custName = document.getElementById('invCustomerName').value;
-    const custPhone = document.getElementById('invCustomerPhone').value;
-    const catLocation = document.getElementById('invCateringLocation').value;
+    const custName = document.getElementById('invCustomerName').value.trim();
+    const custPhone = document.getElementById('invCustomerPhone').value.trim();
+    const catLocation = document.getElementById('invCateringLocation').value.trim();
     const catDate = document.getElementById('invCateringDate').value;
     const invDate = document.getElementById('invDateCreated').value;
     const paidAmount = Number(document.getElementById('invPaidAmount').value) || 0;
     
-    if(!custName || !catDate || this.currentInvoice.items.length === 0) {
-      this.showAlert("Mohon isi nama customer, tanggal katering, dan minimal satu item menu.", "warning");
+    if(!custName || !custPhone || !catLocation || !catDate || this.currentInvoice.items.length === 0) {
+      this.showAlert("Mohon lengkapi: Nama Customer, Telepon, Lokasi, Tanggal Katering, dan minimal 1 menu.", "warning");
       return;
     }
 
@@ -2107,7 +2138,7 @@ const app = {
     // 2. Filter
     let filtered = combinedSchedules.filter(item => {
       const matchName = !this.scheduleState.searchName || 
-        (item.title.toLowerCase().includes(this.scheduleState.searchName.toLowerCase()));
+        (String(item.title).toLowerCase().includes(this.scheduleState.searchName.toLowerCase()));
         
       let matchDate = true;
       if (this.scheduleState.selectedDate) {
@@ -2372,10 +2403,25 @@ const app = {
   async saveUser(e) {
     e.preventDefault();
     const id = document.getElementById('userId').value;
+    const username = document.getElementById('userName').value.trim();
+    
+    const existing = this.data.users.find(u => String(u.username).toLowerCase() === username.toLowerCase() && u.id != id);
+    if (existing) {
+      this.showAlert(`Username "${username}" sudah digunakan! Silakan pilih username lain.`, "warning");
+      return;
+    }
+    
+    let passwordVal = document.getElementById('userPassword').value;
+    if (passwordVal === "********") {
+      passwordVal = "";
+    } else {
+      passwordVal = await this.hashPassword(passwordVal);
+    }
+
     const payload = {
       id: id || Date.now().toString(),
-      username: document.getElementById('userName').value,
-      password: document.getElementById('userPassword').value,
+      username: username,
+      password: passwordVal,
       role: document.getElementById('userRole').value
     };
     
@@ -2393,7 +2439,6 @@ const app = {
   openProfileModal() {
     if (!this.data.currentUser) return;
     
-    // Find current user full data from memory
     const user = this.data.users.find(u => u.username === this.data.currentUser.username) || this.data.currentUser;
     
     document.getElementById('profileName').value = user.name || user.username;
@@ -2409,14 +2454,13 @@ const app = {
     
     const name = document.getElementById('profileName').value.trim();
     const username = document.getElementById('profileUsername').value.trim();
-    const password = document.getElementById('profilePassword').value.trim();
+    let password = document.getElementById('profilePassword').value.trim();
     
     if (!name || !username || !password) {
       this.showAlert("Semua field harus diisi!", "warning");
       return;
     }
     
-    // Check if username is already taken by someone else
     const existing = this.data.users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.id !== this.data.currentUser.id);
     if (existing) {
       this.showAlert("Username sudah digunakan oleh akun lain. Silakan pilih username lain.", "warning");
@@ -2425,16 +2469,20 @@ const app = {
     
     this.showLoading(true, "Memperbarui data akun...");
     
-    // Update currentUser local state
+    if (password === "********") {
+      password = "";
+    } else {
+      password = await this.hashPassword(password);
+    }
+
     const updatedUser = {
       ...this.data.currentUser,
       name: name,
       username: username,
-      password: password
+      password: "********"
     };
     
     try {
-      // Find full user object in this.data.users
       const index = this.data.users.findIndex(u => u.id == this.data.currentUser.id);
       let fullUserObj = index > -1 ? this.data.users[index] : { id: this.data.currentUser.id.toString(), role: this.data.currentUser.role };
       
@@ -2442,11 +2490,9 @@ const app = {
       fullUserObj.username = username;
       fullUserObj.password = password;
       
-      // Update in Google Sheets / LocalStorage
       if (this.data.apiUrl) {
         await this.updateRow('Users', fullUserObj);
       } else {
-        // Offline mode fallback
         const users = JSON.parse(localStorage.getItem('users') || '[]');
         const idx = users.findIndex(u => u.id == fullUserObj.id);
         if (idx > -1) {
@@ -2458,11 +2504,9 @@ const app = {
         this.data.users = users;
       }
       
-      // Update logged in user session
       localStorage.setItem('currentUser', JSON.stringify(updatedUser));
       this.data.currentUser = updatedUser;
       
-      // Apply the new name to Navbar
       this.applyRoles();
       
       this.closeModal('profileModal');
@@ -3199,7 +3243,7 @@ const app = {
     const query = this.menuModalState.searchQuery;
     let filtered = this.data.menus.filter(m => {
       if (!query) return true;
-      return m.name.toLowerCase().includes(query) || (m.description && m.description.toLowerCase().includes(query));
+      return String(m.name).toLowerCase().includes(query) || (m.description && String(m.description).toLowerCase().includes(query));
     });
 
     const totalItems = filtered.length;
@@ -3485,3 +3529,4 @@ const app = {
 document.addEventListener('DOMContentLoaded', () => {
   app.init();
 });
+
