@@ -216,7 +216,7 @@ const app = {
   },
 
   initTheme() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
+    const savedTheme = localStorage.getItem('theme') || 'light';
     if (savedTheme === 'light') {
       document.body.classList.add('light-theme');
       this.updateThemeButtonIcon('light');
