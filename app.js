@@ -14,6 +14,21 @@ const app = {
     language: localStorage.getItem('appLanguage') || 'id'
   },
 
+  escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    if (typeof str !== 'string') str = String(str);
+    return str.replace(/[&<>"']/g, function(m) {
+      switch (m) {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '"': return '&quot;';
+        case "'": return '&#039;';
+        default: return m;
+      }
+    });
+  },
+
   translations: {
     id: {
       dashboard: "Dashboard",
@@ -122,11 +137,20 @@ const app = {
     sortAsc: true
   },
 
+  // Dashboard Mini Calendar State (independent from scheduleState)
+  dashCalState: {
+    currentMonth: new Date().getMonth(),
+    currentYear: new Date().getFullYear()
+  },
+
   // Invoices Pagination, Search & Sorting States
   invoiceState: {
     currentPage: 1,
     perPage: 10,
-    searchQuery: ''
+    searchQuery: '',
+    filterStatus: 'all',     // 'all' | 'Lunas' | 'DP / Sebagian' | 'Belum Lunas'
+    filterDateFrom: '',      // YYYY-MM-DD
+    filterDateTo: ''         // YYYY-MM-DD
   },
 
   // Menus Pagination, Search States
@@ -218,6 +242,26 @@ const app = {
       btn.innerHTML = '<i data-lucide="sun"></i>';
     }
     lucide.createIcons();
+  },
+
+  // Toggle show/hide password
+  togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+
+    // Find the toggle button inside the same wrapper
+    const wrapper = input.closest('.password-input-wrapper');
+    const btn = wrapper ? wrapper.querySelector('.password-toggle-btn') : null;
+    if (btn) {
+      const newIcon = isHidden ? 'eye-off' : 'eye';
+      btn.innerHTML = `<i data-lucide="${newIcon}" style="width:16px; height:16px;"></i>`;
+      lucide.createIcons({ nodes: [btn] });
+    }
+
+    input.focus();
   },
 
   applyLogo() {
@@ -393,7 +437,13 @@ const app = {
 
     const adminElements = document.querySelectorAll('.admin-only');
     adminElements.forEach(el => {
-      if (role === 'admin') el.style.display = '';
+      if (role === 'admin' || role === 'super admin') el.style.display = '';
+      else el.style.display = 'none';
+    });
+
+    const superAdminElements = document.querySelectorAll('.super-admin-only');
+    superAdminElements.forEach(el => {
+      if (role === 'super admin') el.style.display = '';
       else el.style.display = 'none';
     });
   },
@@ -420,6 +470,7 @@ const app = {
     document.getElementById('loginError').classList.add('hidden');
     
     try {
+
       const passwordHash = await this.hashPassword(password);
       
       if (this.data.apiUrl) {
@@ -456,9 +507,18 @@ const app = {
   // === Navigation ===
   navigate(page) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    if (page === 'create-invoice' && role !== 'admin') {
-      this.showAlert('Anda tidak memiliki akses untuk menambah/mengedit invoice.', 'error', 'Akses Ditolak');
-      this.navigate('invoices');
+    if (page === 'create-invoice') {
+      this.renderCreateInvoiceInit();
+      // Fall through to normal view switching below
+    }
+    if (page === 'users' && role !== 'super admin') {
+      this.showAlert('Anda tidak memiliki akses ke Manajemen Pengguna.', 'error', 'Akses Ditolak');
+      this.navigate('dashboard');
+      return;
+    }
+    if ((page === 'menus' || page === 'reports') && role !== 'admin' && role !== 'super admin') {
+      this.showAlert('Anda tidak memiliki akses ke modul ini.', 'error', 'Akses Ditolak');
+      this.navigate('dashboard');
       return;
     }
 
@@ -510,21 +570,13 @@ const app = {
   },
 
   updateNavIndicator(page) {
-    setTimeout(() => {
-      const tabsContainer = document.querySelector('.navbar-tabs');
-      const activeTab = document.querySelector(`.nav-link[data-page="${page}"]`);
-      const indicator = document.querySelector('.nav-indicator');
-      
-      if (!tabsContainer || !activeTab || !indicator) return;
-      
-      const containerRect = tabsContainer.getBoundingClientRect();
-      const tabRect = activeTab.getBoundingClientRect();
-      
-      const leftOffset = tabRect.left - containerRect.left + tabsContainer.scrollLeft;
-      
-      indicator.style.left = `${leftOffset}px`;
-      indicator.style.width = `${tabRect.width}px`;
-    }, 50);
+    // Indicator dihapus — active tab kini pakai background langsung via CSS
+    const indicator = document.querySelector('.nav-indicator');
+    if (indicator) {
+      indicator.style.display = 'none';
+      indicator.style.opacity = '0';
+      indicator.style.width = '0';
+    }
   },
 
   // === Data Layer ===
@@ -721,9 +773,9 @@ const app = {
 
           table.innerHTML += `
             <tr>
-              <td><strong>${inv.customerName || '-'}</strong></td>
+              <td><strong>${this.escapeHTML(inv.customerName || '-')}</strong></td>
               <td><strong>${this.formatDate(inv.cateringDate)}</strong></td>
-              <td>${inv.cateringLocation || '-'}</td>
+              <td>${this.escapeHTML(inv.cateringLocation || '-')}</td>
               <td>${statusBadge}</td>
             </tr>
           `;
@@ -760,8 +812,8 @@ const app = {
 
         dueTable.innerHTML += `
           <tr>
-            <td>${inv.invoiceNumber}</td>
-            <td>${inv.customerName || '-'}</td>
+            <td>${this.escapeHTML(inv.invoiceNumber)}</td>
+            <td>${this.escapeHTML(inv.customerName || '-')}</td>
             <td><strong>${this.formatDate(inv.cateringDate)}</strong></td>
             <td>${this.formatCurrency(inv.totalAmount)}</td>
             <td style="color: var(--color-danger); font-weight: bold;">${this.formatCurrency(remaining)}</td>
@@ -772,6 +824,105 @@ const app = {
     }
 
     this.renderDashboardChart();
+    this.renderDashCalendar();
+  },
+
+  renderDashCalendar() {
+    const container = document.getElementById('dashCalDays');
+    const label = document.getElementById('dashCalMonthYear');
+    if (!container || !label) return;
+
+    container.innerHTML = '';
+
+    const monthNamesID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+    const monthNamesEN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const monthNames = (this.data.language === 'en') ? monthNamesEN : monthNamesID;
+
+    const year = this.dashCalState.currentYear;
+    const month = this.dashCalState.currentMonth;
+    label.textContent = `${monthNames[month]} ${year}`;
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const prevMonthDays = new Date(year, month, 0).getDate();
+
+    // Build schedule map for this month
+    const scheduleMap = {};
+    this.data.invoices.forEach(inv => {
+      if (inv.cateringDate) {
+        const d = this.getLocalYMD(inv.cateringDate);
+        if (!scheduleMap[d]) scheduleMap[d] = { invoice: false, booking: false, meeting: false };
+        scheduleMap[d].invoice = true;
+      }
+    });
+    this.data.schedules.forEach(sch => {
+      if (sch.date) {
+        const d = this.getLocalYMD(sch.date);
+        if (!scheduleMap[d]) scheduleMap[d] = { invoice: false, booking: false, meeting: false };
+        if (sch.type === 'Meeting') scheduleMap[d].meeting = true;
+        else scheduleMap[d].booking = true;
+      }
+    });
+
+    // Today in Asia/Jakarta
+    const todayStr = this.getLocalYMD(new Date());
+
+    // Pad previous month cells
+    for (let i = firstDay; i > 0; i--) {
+      const d = prevMonthDays - i + 1;
+      container.innerHTML += `<div class="dash-cal-cell other-month">${d}</div>`;
+    }
+
+    // Current month cells
+    for (let day = 1; day <= totalDays; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const ev = scheduleMap[dateStr];
+      const isToday = dateStr === todayStr;
+
+      let classes = 'dash-cal-cell';
+      if (isToday) classes += ' today';
+      else if (ev) {
+        classes += ' has-event';
+        if (ev.meeting) classes += ' has-meeting';
+        else if (ev.booking) classes += ' has-booking';
+      }
+
+      let dotsHtml = '';
+      if (ev && !isToday) {
+        dotsHtml = '<div class="dash-cal-dots">';
+        if (ev.invoice)  dotsHtml += `<span class="dash-cal-dot" style="background:var(--color-primary);"></span>`;
+        if (ev.booking)  dotsHtml += `<span class="dash-cal-dot" style="background:#38bdf8;"></span>`;
+        if (ev.meeting)  dotsHtml += `<span class="dash-cal-dot" style="background:#8b5cf6;"></span>`;
+        dotsHtml += '</div>';
+      }
+
+      container.innerHTML += `<div class="${classes}">${day}${dotsHtml}</div>`;
+    }
+
+    // Fill trailing cells so grid is always complete (6 rows = 42 cells)
+    const totalCells = firstDay + totalDays;
+    const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+    for (let i = 1; i <= remaining; i++) {
+      container.innerHTML += `<div class="dash-cal-cell other-month">${i}</div>`;
+    }
+  },
+
+  dashCalPrev() {
+    this.dashCalState.currentMonth--;
+    if (this.dashCalState.currentMonth < 0) {
+      this.dashCalState.currentMonth = 11;
+      this.dashCalState.currentYear--;
+    }
+    this.renderDashCalendar();
+  },
+
+  dashCalNext() {
+    this.dashCalState.currentMonth++;
+    if (this.dashCalState.currentMonth > 11) {
+      this.dashCalState.currentMonth = 0;
+      this.dashCalState.currentYear++;
+    }
+    this.renderDashCalendar();
   },
 
   renderDashboardChart() {
@@ -780,39 +931,106 @@ const app = {
 
     // Group by date (last 7 days)
     const dates = [];
-    const totals = [];
+    const paidTotals = [];
+    const unpaidTotals = [];
+    
+    const dayNamesID = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+    
     for(let i=6; i>=0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = this.getLocalYMD(d);
-      dates.push(dateStr);
       
-      const sum = this.data.invoices
+      const dayName = dayNamesID[d.getDay()];
+      const formattedDate = `${dayName} (${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')})`;
+      dates.push(formattedDate);
+      
+      let dayPaid = 0;
+      let dayUnpaid = 0;
+      
+      this.data.invoices
         .filter(inv => inv.createdAt.startsWith(dateStr))
-        .reduce((acc, curr) => acc + Number(curr.totalAmount), 0);
-      totals.push(sum);
+        .forEach(inv => {
+          const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+          const remaining = Number(inv.totalAmount) - paid;
+          dayPaid += paid;
+          dayUnpaid += (remaining > 0 ? remaining : 0);
+        });
+        
+      paidTotals.push(dayPaid);
+      unpaidTotals.push(dayUnpaid);
     }
 
     this.chartInstance = new Chart(ctx, {
-      type: 'line',
+      type: 'bar',
       data: {
         labels: dates,
-        datasets: [{
-          label: 'Revenue (Rp)',
-          data: totals,
-          borderColor: '#d4af37',
-          backgroundColor: 'rgba(212, 175, 55, 0.1)',
-          fill: true,
-          tension: 0.4
-        }]
+        datasets: [
+          {
+            label: 'Terbayar (Paid)',
+            data: paidTotals,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.25)',
+            borderWidth: 1.5,
+            borderRadius: 4
+          },
+          {
+            label: 'Piutang (Receivable)',
+            data: unpaidTotals,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.25)',
+            borderWidth: 1.5,
+            borderRadius: 4
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { 
+          legend: { 
+            display: true,
+            labels: {
+              color: 'var(--color-text-muted)',
+              font: { family: 'Plus Jakarta Sans, sans-serif', size: 11 }
+            }
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                  label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.parsed.y);
+                }
+                return label;
+              }
+            }
+          }
+        },
         scales: { 
-          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
-          x: { grid: { color: 'rgba(255,255,255,0.05)' } }
+          y: { 
+            stacked: true,
+            beginAtZero: true, 
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: {
+              color: 'var(--color-text-muted)',
+              callback: function(value) {
+                if (value >= 1000000) return (value / 1000000) + 'jt';
+                if (value >= 1000) return (value / 1000) + 'rb';
+                return value;
+              }
+            }
+          },
+          x: { 
+            stacked: true,
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: 'var(--color-text-muted)' }
+          }
         }
       }
     });
@@ -886,13 +1104,14 @@ const app = {
       `;
     } else {
       pageItems.forEach(m => {
+        const draftBadge = m.status === 'Draft' ? ' <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 6px; border-radius: 4px; font-size: 11px;">Draft</span>' : '';
         tbody.innerHTML += `
           <tr>
-            <td>${m.id}</td>
-            <td><strong>${m.name}</strong></td>
+            <td>${this.escapeHTML(m.id)}</td>
+            <td><strong>${this.escapeHTML(m.name)}</strong>${draftBadge}</td>
             <td>${this.formatCurrency(m.price)}</td>
-            <td><span class="badge" style="background: rgba(212,175,55,0.1); color: var(--color-primary); padding: 4px 8px; border-radius: 4px; font-weight: 500;">${m.unit || 'pax'}</span></td>
-            <td><span class="text-muted">${m.description || '-'}</span></td>
+            <td><span class="badge" style="background: rgba(212,175,55,0.1); color: var(--color-primary); padding: 4px 8px; border-radius: 4px; font-weight: 500;">${this.escapeHTML(m.unit || 'pax')}</span></td>
+            <td><span class="text-muted">${this.escapeHTML(m.description || '-')}</span></td>
             <td>
               <div style="display: flex; gap: 4px;">
                 <button class="btn btn-secondary btn-sm" onclick="app.editMenu('${m.id}')" title="Edit"><i data-lucide="edit-2" style="width:16px;"></i></button>
@@ -1018,6 +1237,11 @@ const app = {
   },
 
   async importExcel(e) {
+    const role = this.data.currentUser ? this.data.currentUser.role : 'user';
+    if (role !== 'admin' && role !== 'super admin') {
+      this.showAlert("Anda tidak memiliki izin untuk mengimpor menu.", "error", "Akses Ditolak");
+      return;
+    }
     const file = e.target.files[0];
     if (!file) return;
 
@@ -1090,8 +1314,8 @@ const app = {
     reader.readAsArrayBuffer(file);
   },
 
-  async saveMenu(e) {
-    e.preventDefault();
+  async saveMenu(e, isDraft = false) {
+    if (e) e.preventDefault();
     const idField = document.getElementById('menuId').value;
     const isUpdate = !!idField;
     const menuName = document.getElementById('menuName').value.trim();
@@ -1107,7 +1331,8 @@ const app = {
       name: menuName,
       price: document.getElementById('menuPrice').value,
       unit: document.getElementById('menuUnit').value,
-      description: document.getElementById('menuDesc').value
+      description: document.getElementById('menuDesc').value,
+      status: isDraft ? 'Draft' : 'Active'
     };
 
     if (isUpdate) {
@@ -1124,16 +1349,34 @@ const app = {
 
   // === Feature: Invoices ===
   filterInvoices() {
-    const input = document.getElementById('invoiceSearchText');
-    this.invoiceState.searchQuery = input ? input.value.toLowerCase().trim() : '';
+    const searchInput = document.getElementById('invoiceSearchText');
+    const statusInput = document.getElementById('invoiceFilterStatus');
+    const dateFromInput = document.getElementById('invoiceFilterDateFrom');
+    const dateToInput = document.getElementById('invoiceFilterDateTo');
+
+    this.invoiceState.searchQuery = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    this.invoiceState.filterStatus = statusInput ? statusInput.value : 'all';
+    this.invoiceState.filterDateFrom = dateFromInput ? dateFromInput.value : '';
+    this.invoiceState.filterDateTo = dateToInput ? dateToInput.value : '';
     this.invoiceState.currentPage = 1;
     this.renderInvoices();
   },
 
   clearInvoiceFilters() {
-    const input = document.getElementById('invoiceSearchText');
-    if (input) input.value = '';
+    const searchInput = document.getElementById('invoiceSearchText');
+    const statusInput = document.getElementById('invoiceFilterStatus');
+    const dateFromInput = document.getElementById('invoiceFilterDateFrom');
+    const dateToInput = document.getElementById('invoiceFilterDateTo');
+
+    if (searchInput) searchInput.value = '';
+    if (statusInput) statusInput.value = 'all';
+    if (dateFromInput) dateFromInput.value = '';
+    if (dateToInput) dateToInput.value = '';
+
     this.invoiceState.searchQuery = '';
+    this.invoiceState.filterStatus = 'all';
+    this.invoiceState.filterDateFrom = '';
+    this.invoiceState.filterDateTo = '';
     this.invoiceState.currentPage = 1;
     this.renderInvoices();
   },
@@ -1145,16 +1388,61 @@ const app = {
 
     // 1. Filter
     let filtered = this.data.invoices.filter(inv => {
+      // a. Text search
       const q = this.invoiceState.searchQuery;
-      if (!q) return true;
+      if (q) {
+        const numMatch = inv.invoiceNumber && String(inv.invoiceNumber).toLowerCase().includes(q);
+        const nameMatch = inv.customerName && String(inv.customerName).toLowerCase().includes(q);
+        const locMatch = inv.cateringLocation && String(inv.cateringLocation).toLowerCase().includes(q);
+        const phoneMatch = inv.customerPhone && String(inv.customerPhone).toLowerCase().includes(q);
+        if (!numMatch && !nameMatch && !locMatch && !phoneMatch) return false;
+      }
 
-      const numMatch = inv.invoiceNumber && String(inv.invoiceNumber).toLowerCase().includes(q);
-      const nameMatch = inv.customerName && String(inv.customerName).toLowerCase().includes(q);
-      const locMatch = inv.cateringLocation && String(inv.cateringLocation).toLowerCase().includes(q);
-      const phoneMatch = inv.customerPhone && String(inv.customerPhone).toLowerCase().includes(q);
-      
-      return numMatch || nameMatch || locMatch || phoneMatch;
+      // b. Status filter
+      const fs = this.invoiceState.filterStatus;
+      if (fs && fs !== 'all') {
+        const paid = Number(inv.paidAmount) || 0;
+        const total = Number(inv.totalAmount) || 0;
+        let derivedStatus;
+        if (inv.status === 'Lunas' || (paid >= total && total > 0)) {
+          derivedStatus = 'Lunas';
+        } else if (paid > 0 && paid < total) {
+          derivedStatus = 'DP / Sebagian';
+        } else {
+          derivedStatus = 'Belum Lunas';
+        }
+        if (derivedStatus !== fs) return false;
+      }
+
+      // c. Date range filter (berdasarkan tanggal katering)
+      const dateFrom = this.invoiceState.filterDateFrom;
+      const dateTo = this.invoiceState.filterDateTo;
+      if (dateFrom && inv.cateringDate) {
+        if (inv.cateringDate < dateFrom) return false;
+      }
+      if (dateTo && inv.cateringDate) {
+        if (inv.cateringDate > dateTo) return false;
+      }
+
+      return true;
     });
+
+    // 1b. Update filter result badge
+    const badge = document.getElementById('invoiceFilterResultBadge');
+    const badgeText = document.getElementById('invoiceFilterResultText');
+    const isFiltered = this.invoiceState.searchQuery ||
+      (this.invoiceState.filterStatus && this.invoiceState.filterStatus !== 'all') ||
+      this.invoiceState.filterDateFrom ||
+      this.invoiceState.filterDateTo;
+    if (badge) {
+      if (isFiltered) {
+        badgeText.textContent = `${filtered.length} hasil`;
+        badge.style.display = 'flex';
+        lucide.createIcons({ nodes: [badge] });
+      } else {
+        badge.style.display = 'none';
+      }
+    }
 
     // 2. Paginate (10 entries per page)
     const totalItems = filtered.length;
@@ -1171,7 +1459,7 @@ const app = {
 
     // 3. Render rows
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    const showActions = (role === 'admin');
+    const showActions = (role === 'admin' || role === 'super admin');
 
     if (pageItems.length === 0) {
       const noDataMsg = (this.data.language === 'en') ? 'No invoices found.' : 'Tidak ada data invoice.';
@@ -1188,6 +1476,8 @@ const app = {
         let statusBadge = '';
         if (inv.status === 'Lunas') {
           statusBadge = '<span style="color:var(--color-success); background:rgba(16,185,129,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">Lunas</span>';
+        } else if (inv.status === 'Draft') {
+          statusBadge = '<span style="color:var(--color-text-muted); background:rgba(255,255,255,0.08); border: 1px solid var(--color-border); padding:3px 7px; border-radius:4px; font-size:12px;">Draft</span>';
         } else if (inv.status === 'DP / Sebagian' || (Number(inv.paidAmount) > 0 && Number(inv.paidAmount) < Number(inv.totalAmount))) {
           statusBadge = '<span style="color:#f59e0b; background:rgba(245,158,11,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">DP / Sebagian</span>';
         } else {
@@ -1196,10 +1486,10 @@ const app = {
 
         table.innerHTML += `
           <tr>
-            <td>${inv.invoiceNumber}</td>
-            <td>${inv.customerName || '-'}</td>
-            <td>${inv.cateringLocation || '-'}</td>
-            <td>${this.formatPhone(inv.customerPhone)}</td>
+            <td>${this.escapeHTML(inv.invoiceNumber)}</td>
+            <td>${this.escapeHTML(inv.customerName || '-')}</td>
+            <td>${this.escapeHTML(inv.cateringLocation || '-')}</td>
+            <td>${this.escapeHTML(this.formatPhone(inv.customerPhone))}</td>
             <td>${this.formatDate(inv.cateringDate)}</td>
             <td>${this.formatCurrency(inv.totalAmount)}</td>
             <td>${statusBadge}</td>
@@ -1340,10 +1630,10 @@ const app = {
     items.forEach(item => {
       pdfTbody.innerHTML += `
         <tr>
-          <td style="padding: 12px 15px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 500;">${item.name}</td>
+          <td style="padding: 12px 15px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 500;">${this.escapeHTML(item.name)}</td>
           <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #475569;">${this.formatCurrency(item.price)}</td>
           <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569;">${item.qty}</td>
-          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569; font-weight: 500;">${item.unit || 'pax'}</td>
+          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569; font-weight: 500;">${this.escapeHTML(item.unit || 'pax')}</td>
           <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 600;">${this.formatCurrency(item.subtotal)}</td>
         </tr>
       `;
@@ -1417,9 +1707,19 @@ const app = {
     this.updateInvoiceItemsTable();
   },
 
+  openCreateInvoiceModal() {
+    const role = this.data.currentUser ? this.data.currentUser.role : 'user';
+    if (role !== 'admin' && role !== 'super admin') {
+      this.showAlert("Anda tidak memiliki izin untuk menambah invoice.", "error", "Akses Ditolak");
+      return;
+    }
+    this.navigate('create-invoice');
+    lucide.createIcons();
+  },
+
   editInvoice(id) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    if (role !== 'admin') {
+    if (role !== 'admin' && role !== 'super admin') {
       this.showAlert("Anda tidak memiliki izin untuk mengedit invoice.", "error", "Akses Ditolak");
       return;
     }
@@ -1498,11 +1798,16 @@ const app = {
       subtotal += item.subtotal;
       tbody.innerHTML += `
         <tr>
-          <td style="padding: 8px;">${item.name}</td>
-          <td style="text-align: right; padding: 8px;">${this.formatCurrency(item.price)}</td>
-          <td style="text-align: center; padding: 8px;"><strong>${item.qty}</strong></td>
-          <td style="text-align: center; padding: 8px;"><span class="badge" style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-weight: 500;">${item.unit || 'pax'}</span></td>
-          <td style="text-align: right; padding: 8px; font-weight: 600;">${this.formatCurrency(item.subtotal)}</td>
+          <td style="padding: 8px; text-align: center;">${this.escapeHTML(item.name)}</td>
+          <td style="text-align: center; padding: 8px;">${this.formatCurrency(item.price)}</td>
+          <td style="text-align: center; padding: 8px;">
+            <input type="text" inputmode="numeric" maxlength="4" value="${item.qty}"
+              oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,4)"
+              onblur="if(!this.value||parseInt(this.value)<1){this.value=1;} app.updateEditInvoiceItemQty(${i}, this.value)"
+              style="width:90px; text-align:center; padding:4px 8px; border-radius:6px; border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text); font-size:13px; font-weight:600;">
+          </td>
+          <td style="text-align: center; padding: 8px;"><span class="badge" style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-weight: 500;">${this.escapeHTML(item.unit || 'pax')}</span></td>
+          <td style="text-align: center; padding: 8px; font-weight: 600;" id="edit-inv-item-sub-${i}">${this.formatCurrency(item.subtotal)}</td>
           <td style="text-align: center; padding: 8px;"><button type="button" class="btn btn-danger btn-sm" style="padding: 4px 8px;" onclick="app.removeEditInvoiceItem(${i})"><i data-lucide="trash-2" style="width:14px; height: 14px;"></i></button></td>
         </tr>
       `;
@@ -1527,16 +1832,30 @@ const app = {
     const subtotalEl = document.getElementById('editInvSubtotal');
     if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
     
-    if (discLabelEl) {
+    const discountRow = document.getElementById('editInvDiscountRow');
+    if (discountRow) {
       if (discountType !== 'none' && discountAmount > 0) {
-        discLabelEl.textContent = `- ${this.formatCurrency(discountAmount)}`;
-        discLabelEl.style.display = 'inline';
+        discountRow.style.display = 'flex';
       } else {
-        discLabelEl.style.display = 'none';
+        discountRow.style.display = 'none';
       }
+    }
+    if (discLabelEl) {
+      discLabelEl.textContent = `- ${this.formatCurrency(discountAmount)}`;
     }
     
     document.getElementById('editInvGrandTotal').textContent = this.formatCurrency(grandTotal);
+    
+    // Dynamic Sisa Tagihan (Remaining Balance)
+    const paidInput = document.getElementById('editInvPaidAmount');
+    const paidAmount = paidInput ? (Number(paidInput.value) || 0) : 0;
+    const remainingBalance = Math.max(0, grandTotal - paidAmount);
+    const remainingEl = document.getElementById('editInvRemainingBalance');
+    if (remainingEl) {
+      remainingEl.textContent = this.formatCurrency(remainingBalance);
+      remainingEl.className = 'remaining-balance-value ' + 
+        (remainingBalance === 0 ? 'paid-full' : (paidAmount > 0 ? 'paid-partial' : 'paid-none'));
+    }
     
     this.editInvoiceState.subtotal = subtotal;
     this.editInvoiceState.discountType = discountType;
@@ -1547,8 +1866,8 @@ const app = {
     lucide.createIcons();
   },
 
-  async saveEditedInvoice(e) {
-    e.preventDefault();
+  async saveEditedInvoice(e, statusOverride = null) {
+    if (e) e.preventDefault();
     const id = document.getElementById('editInvId').value;
     const inv = this.data.invoices.find(i => i.id == id);
     if (!inv) return;
@@ -1560,7 +1879,10 @@ const app = {
     const totalAmount = this.editInvoiceState.total || 0;
     const paidAmount = Number(document.getElementById('editInvPaidAmount').value) || 0;
     
-    const status = paidAmount >= totalAmount ? 'Lunas' : (paidAmount > 0 ? 'DP / Sebagian' : 'Belum Lunas');
+    let status = paidAmount >= totalAmount ? 'Lunas' : (paidAmount > 0 ? 'DP / Sebagian' : 'Belum Lunas');
+    if (statusOverride) {
+      status = statusOverride;
+    }
     
     const payload = {
       ...inv,
@@ -1597,7 +1919,7 @@ const app = {
 
   async deleteInvoice(id) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    if (role !== 'admin') {
+    if (role !== 'admin' && role !== 'super admin') {
       this.showAlert("Anda tidak memiliki izin untuk menghapus invoice.", "error", "Akses Ditolak");
       return;
     }
@@ -1610,7 +1932,7 @@ const app = {
 
   async markInvoicePaid(id) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    if (role !== 'admin') {
+    if (role !== 'admin' && role !== 'super admin') {
       this.showAlert("Anda tidak memiliki izin untuk memperbarui status pembayaran invoice.", "error", "Akses Ditolak");
       return;
     }
@@ -1711,6 +2033,118 @@ const app = {
     this.updateInvoiceItemsTable();
   },
 
+  updateInvoiceItemQty(index, val) {
+    const qty = Math.max(1, parseInt(val) || 1);
+    const item = this.currentInvoice.items[index];
+    if (!item) return;
+    item.qty = qty;
+    item.subtotal = item.price * qty;
+    // Update only the subtotal cell — no table re-render
+    const subCell = document.getElementById(`inv-item-sub-${index}`);
+    if (subCell) subCell.textContent = this.formatCurrency(item.subtotal);
+    this.recalcCreateInvoiceTotals();
+  },
+
+  updateEditInvoiceItemQty(index, val) {
+    const qty = Math.max(1, parseInt(val) || 1);
+    const item = this.editInvoiceState.items[index];
+    if (!item) return;
+    item.qty = qty;
+    item.subtotal = item.price * qty;
+    // Update only the subtotal cell — no table re-render
+    const subCell = document.getElementById(`edit-inv-item-sub-${index}`);
+    if (subCell) subCell.textContent = this.formatCurrency(item.subtotal);
+    this.recalcEditInvoiceTotals();
+  },
+
+  recalcCreateInvoiceTotals() {
+    const subtotal = this.currentInvoice.items.reduce((s, it) => s + it.subtotal, 0);
+    const discTypeEl = document.getElementById('invDiscountType');
+    const discValEl = document.getElementById('invDiscountValue');
+    const discLabelEl = document.getElementById('invDiscountLabel');
+    const discountType = discTypeEl ? discTypeEl.value : 'none';
+    const discountValue = discValEl ? (Number(discValEl.value) || 0) : 0;
+    let discountAmount = 0;
+    if (discountType === 'percent') discountAmount = Math.round(subtotal * (discountValue / 100));
+    else if (discountType === 'nominal') discountAmount = discountValue;
+    const grandTotal = Math.max(0, subtotal - discountAmount);
+    const subtotalEl = document.getElementById('invSubtotal');
+    if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
+    const discountRow = document.getElementById('invDiscountRow');
+    if (discountRow) {
+      if (discountType !== 'none' && discountAmount > 0) {
+        discountRow.style.display = 'flex';
+      } else {
+        discountRow.style.display = 'none';
+      }
+    }
+    if (discLabelEl) {
+      discLabelEl.textContent = discountAmount > 0 ? `- ${this.formatCurrency(discountAmount)}` : '';
+    }
+    document.getElementById('invGrandTotal').textContent = this.formatCurrency(grandTotal);
+    
+    // Dynamic Sisa Tagihan (Remaining Balance)
+    const paidInput = document.getElementById('invPaidAmount');
+    const paidAmount = paidInput ? (Number(paidInput.value) || 0) : 0;
+    const remainingBalance = Math.max(0, grandTotal - paidAmount);
+    const remainingEl = document.getElementById('invRemainingBalance');
+    if (remainingEl) {
+      remainingEl.textContent = this.formatCurrency(remainingBalance);
+      remainingEl.className = 'remaining-balance-value ' + 
+        (remainingBalance === 0 ? 'paid-full' : (paidAmount > 0 ? 'paid-partial' : 'paid-none'));
+    }
+
+    this.currentInvoice.subtotal = subtotal;
+    this.currentInvoice.discountType = discountType;
+    this.currentInvoice.discountValue = discountValue;
+    this.currentInvoice.discountAmount = discountAmount;
+    this.currentInvoice.total = grandTotal;
+  },
+
+  recalcEditInvoiceTotals() {
+    const subtotal = this.editInvoiceState.items.reduce((s, it) => s + it.subtotal, 0);
+    const discTypeEl = document.getElementById('editInvDiscountType');
+    const discValEl = document.getElementById('editInvDiscountValue');
+    const discLabelEl = document.getElementById('editInvDiscountLabel');
+    const discountType = discTypeEl ? discTypeEl.value : 'none';
+    const discountValue = discValEl ? (Number(discValEl.value) || 0) : 0;
+    let discountAmount = 0;
+    if (discountType === 'percent') discountAmount = Math.round(subtotal * (discountValue / 100));
+    else if (discountType === 'nominal') discountAmount = discountValue;
+    const grandTotal = Math.max(0, subtotal - discountAmount);
+    const subtotalEl = document.getElementById('editInvSubtotal');
+    if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
+    const discountRow = document.getElementById('editInvDiscountRow');
+    if (discountRow) {
+      if (discountType !== 'none' && discountAmount > 0) {
+        discountRow.style.display = 'flex';
+      } else {
+        discountRow.style.display = 'none';
+      }
+    }
+    if (discLabelEl) {
+      discLabelEl.textContent = discountAmount > 0 ? `- ${this.formatCurrency(discountAmount)}` : '';
+    }
+    document.getElementById('editInvGrandTotal').textContent = this.formatCurrency(grandTotal);
+    
+    // Dynamic Sisa Tagihan (Remaining Balance)
+    const paidInput = document.getElementById('editInvPaidAmount');
+    const paidAmount = paidInput ? (Number(paidInput.value) || 0) : 0;
+    const remainingBalance = Math.max(0, grandTotal - paidAmount);
+    const remainingEl = document.getElementById('editInvRemainingBalance');
+    if (remainingEl) {
+      remainingEl.textContent = this.formatCurrency(remainingBalance);
+      remainingEl.className = 'remaining-balance-value ' + 
+        (remainingBalance === 0 ? 'paid-full' : (paidAmount > 0 ? 'paid-partial' : 'paid-none'));
+    }
+
+    this.editInvoiceState.subtotal = subtotal;
+    this.editInvoiceState.discountType = discountType;
+    this.editInvoiceState.discountValue = discountValue;
+    this.editInvoiceState.discountAmount = discountAmount;
+    this.editInvoiceState.total = grandTotal;
+  },
+
   updateInvoiceItemsTable() {
     const tbody = document.getElementById('invItemsTable');
     tbody.innerHTML = '';
@@ -1720,11 +2154,16 @@ const app = {
       subtotal += item.subtotal;
       tbody.innerHTML += `
         <tr>
-          <td>${item.name}</td>
+          <td>${this.escapeHTML(item.name)}</td>
           <td>${this.formatCurrency(item.price)}</td>
-          <td><strong>${item.qty}</strong></td>
-          <td><span class="badge" style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 4px; font-weight: 500;">${item.unit || 'pax'}</span></td>
-          <td>${this.formatCurrency(item.subtotal)}</td>
+          <td>
+            <input type="text" inputmode="numeric" maxlength="4" value="${item.qty}"
+              oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,4)"
+              onblur="if(!this.value||parseInt(this.value)<1){this.value=1;} app.updateInvoiceItemQty(${i}, this.value)"
+              style="width:90px; text-align:center; padding:4px 8px; border-radius:6px; border:1px solid var(--color-border); background:var(--color-surface); color:var(--color-text); font-size:13px; font-weight:600;">
+          </td>
+          <td><span class="badge" style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 4px; font-weight: 500;">${this.escapeHTML(item.unit || 'pax')}</span></td>
+          <td id="inv-item-sub-${i}">${this.formatCurrency(item.subtotal)}</td>
           <td><button class="btn btn-danger btn-sm" onclick="app.removeInvoiceItem(${i})"><i data-lucide="trash-2" style="width:16px;"></i></button></td>
         </tr>
       `;
@@ -1743,22 +2182,35 @@ const app = {
     } else if (discountType === 'nominal') {
       discountAmount = discountValue;
     }
-    
     const grandTotal = Math.max(0, subtotal - discountAmount);
     
     const subtotalEl = document.getElementById('invSubtotal');
     if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
     
-    if (discLabelEl) {
+    const discountRow = document.getElementById('invDiscountRow');
+    if (discountRow) {
       if (discountType !== 'none' && discountAmount > 0) {
-        discLabelEl.textContent = `- ${this.formatCurrency(discountAmount)}`;
-        discLabelEl.style.display = 'inline';
+        discountRow.style.display = 'flex';
       } else {
-        discLabelEl.style.display = 'none';
+        discountRow.style.display = 'none';
       }
+    }
+    if (discLabelEl) {
+      discLabelEl.textContent = `- ${this.formatCurrency(discountAmount)}`;
     }
     
     document.getElementById('invGrandTotal').textContent = this.formatCurrency(grandTotal);
+    
+    // Dynamic Sisa Tagihan (Remaining Balance)
+    const paidInput = document.getElementById('invPaidAmount');
+    const paidAmount = paidInput ? (Number(paidInput.value) || 0) : 0;
+    const remainingBalance = Math.max(0, grandTotal - paidAmount);
+    const remainingEl = document.getElementById('invRemainingBalance');
+    if (remainingEl) {
+      remainingEl.textContent = this.formatCurrency(remainingBalance);
+      remainingEl.className = 'remaining-balance-value ' + 
+        (remainingBalance === 0 ? 'paid-full' : (paidAmount > 0 ? 'paid-partial' : 'paid-none'));
+    }
     
     this.currentInvoice.subtotal = subtotal;
     this.currentInvoice.discountType = discountType;
@@ -1769,9 +2221,9 @@ const app = {
     lucide.createIcons();
   },
 
-  async saveInvoice() {
+  async saveInvoice(isDraft = false) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    if (role !== 'admin') {
+    if (role !== 'admin' && role !== 'super admin') {
       this.showAlert("Anda tidak memiliki izin untuk menyimpan invoice.", "error", "Akses Ditolak");
       return;
     }
@@ -1783,16 +2235,25 @@ const app = {
     const invDate = document.getElementById('invDateCreated').value;
     const paidAmount = Number(document.getElementById('invPaidAmount').value) || 0;
     
-    if(!custName || !custPhone || !catLocation || !catDate || this.currentInvoice.items.length === 0) {
-      this.showAlert("Mohon lengkapi: Nama Customer, Telepon, Lokasi, Tanggal Katering, dan minimal 1 menu.", "warning");
-      return;
+    if (isDraft) {
+      if (!custName) {
+        this.showAlert("Mohon lengkapi minimal Nama Customer untuk menyimpan draft.", "warning");
+        return;
+      }
+    } else {
+      if(!custName || !custPhone || !catLocation || !catDate || this.currentInvoice.items.length === 0) {
+        this.showAlert("Mohon lengkapi: Nama Customer, Telepon, Lokasi, Tanggal Katering, dan minimal 1 menu.", "warning");
+        return;
+      }
     }
 
     const isUpdate = !!editId;
     let invNum = isUpdate ? document.getElementById('pdfInvNumber').textContent : 'INV-' + new Date().getTime().toString().slice(-6);
     
     let status = 'Belum Lunas';
-    if (paidAmount > 0) {
+    if (isDraft) {
+      status = 'Draft';
+    } else if (paidAmount > 0) {
       if (paidAmount >= this.currentInvoice.total) {
         status = 'Lunas';
       } else {
@@ -1825,7 +2286,7 @@ const app = {
       await this.addRow('Invoices', payload);
     }
     
-    // Reset and navigate
+    // Navigate back to invoices list
     this.navigate('invoices');
   },
 
@@ -2110,11 +2571,12 @@ const app = {
     this.data.invoices.forEach(inv => {
       if (!inv.cateringDate) return;
       const itemsArr = typeof inv.items === 'string' ? JSON.parse(inv.items || '[]') : (inv.items || []);
+      const escapedItems = itemsArr.map(i => i.qty + 'x ' + this.escapeHTML(i.name)).join(', ');
       combinedSchedules.push({
         _rawDate: inv.cateringDate,
-        title: `${inv.customerName || 'Unknown'} - ${inv.invoiceNumber}`,
-        subtitle: `<i data-lucide="phone" style="width:14px; vertical-align:middle;"></i> ${this.formatPhone(inv.customerPhone)}`,
-        details: `Items: ${itemsArr.map(i => i.qty + 'x ' + i.name).join(', ')}`,
+        title: `${this.escapeHTML(inv.customerName || 'Unknown')} - ${this.escapeHTML(inv.invoiceNumber)}`,
+        subtitle: `<i data-lucide="phone" style="width:14px; vertical-align:middle;"></i> ${this.escapeHTML(this.formatPhone(inv.customerPhone))}`,
+        details: escapedItems ? `Items: ${escapedItems}` : '',
         badgeText: 'Invoice',
         badgeColor: 'var(--color-primary)'
       });
@@ -2123,14 +2585,16 @@ const app = {
     // Add standalone schedules
     this.data.schedules.forEach(sch => {
       if (!sch.date) return;
+      const isDraft = sch.status === 'Draft';
+      const draftBadge = isDraft ? ' <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle;">DRAFT</span>' : '';
       combinedSchedules.push({
         _isStandalone: true,
         _rawId: sch.id,
         _rawDate: sch.date,
-        title: sch.title || 'Untitled',
-        subtitle: `<i data-lucide="map-pin" style="width:14px; vertical-align:middle;"></i> ${sch.location || '-'}`,
-        details: sch.notes ? `Catatan: ${sch.notes}` : '',
-        badgeText: sch.type || 'Booking',
+        title: this.escapeHTML(sch.title || 'Untitled') + draftBadge,
+        subtitle: `<i data-lucide="map-pin" style="width:14px; vertical-align:middle;"></i> ${this.escapeHTML(sch.location || '-')}`,
+        details: sch.notes ? `Catatan: ${this.escapeHTML(sch.notes)}` : '',
+        badgeText: this.escapeHTML(sch.type || 'Booking'),
         badgeColor: sch.type === 'Meeting' ? '#8b5cf6' : '#38bdf8'
       });
     });
@@ -2180,9 +2644,42 @@ const app = {
     } else {
       pageItems.forEach(item => {
         const d = new Date(item._rawDate);
-        const day = d.getDate() || '-';
-        const locale = (this.data.language === 'en') ? 'en-US' : 'id-ID';
-        const month = !isNaN(d) ? d.toLocaleString(locale, { month: 'short' }) : '-';
+        let day = '-';
+        let month = '-';
+        if (!isNaN(d.getTime())) {
+          try {
+            day = d.toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric' });
+            const locale = (this.data.language === 'en') ? 'en-US' : 'id-ID';
+            month = d.toLocaleDateString(locale, { timeZone: 'Asia/Jakarta', month: 'short' });
+          } catch(e) {
+            day = d.getDate() || '-';
+            const locale = (this.data.language === 'en') ? 'en-US' : 'id-ID';
+            month = d.toLocaleString(locale, { month: 'short' });
+          }
+        }
+
+        let timeHtml = '';
+        if (item._rawDate && item._rawDate.includes('T') && item._rawDate.includes(':')) {
+          const dObj = new Date(item._rawDate);
+          if (!isNaN(dObj.getTime())) {
+            try {
+              const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Jakarta',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+              });
+              const parts = formatter.formatToParts(dObj);
+              const hrs = parts.find(p => p.type === 'hour').value;
+              const mins = parts.find(p => p.type === 'minute').value;
+              timeHtml = `<span style="background: rgba(255, 255, 255, 0.08); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; vertical-align: middle;"><i data-lucide="clock" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle; margin-right: 3px; margin-top: -2px;"></i>${hrs}:${mins} WIB</span>`;
+            } catch(e) {
+              const hrs = String(dObj.getHours()).padStart(2, '0');
+              const mins = String(dObj.getMinutes()).padStart(2, '0');
+              timeHtml = `<span style="background: rgba(255, 255, 255, 0.08); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; vertical-align: middle;"><i data-lucide="clock" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle; margin-right: 3px; margin-top: -2px;"></i>${hrs}:${mins} WIB</span>`;
+            }
+          }
+        }
 
         const actionsHtml = item._isStandalone ? `
           <div style="display: flex; gap: 8px; margin-top: 12px;">
@@ -2201,7 +2698,7 @@ const app = {
               <div class="month">${month}</div>
             </div>
             <div class="timeline-content" style="flex: 1; padding-top: 8px;">
-              <h4 style="font-weight: 600;">${item.title}</h4>
+              <h4 style="font-weight: 600;">${item.title}${timeHtml}</h4>
               <p>${item.subtitle}</p>
               ${item.details ? `<p style="margin-top:0.5rem; color:var(--color-primary); font-weight: 500;">${item.details}</p>` : ''}
               ${actionsHtml}
@@ -2271,6 +2768,15 @@ const app = {
     // Default date to today
     const dateInput = document.getElementById('scheduleDate');
     if (dateInput) dateInput.value = this.getLocalYMD(new Date());
+
+    // Reset time group
+    const timeGrp = document.getElementById('scheduleTimeGroup');
+    if (timeGrp) timeGrp.style.display = 'none';
+    const timeInput = document.getElementById('scheduleTime');
+    if (timeInput) {
+      timeInput.removeAttribute('required');
+      timeInput.value = '';
+    }
     
     this.openModal('addScheduleModal');
   },
@@ -2285,9 +2791,43 @@ const app = {
     document.getElementById('scheduleId').value = sch.id;
     document.getElementById('scheduleModalTitle').textContent = 'Edit Jadwal';
     
-    document.getElementById('scheduleType').value = sch.type || 'Booking';
+    const type = sch.type || 'Booking';
+    document.getElementById('scheduleType').value = type;
     document.getElementById('scheduleTitle').value = sch.title || '';
-    document.getElementById('scheduleDate').value = sch.date ? this.getLocalYMD(sch.date) : '';
+    
+    // Extract date and time
+    let timeVal = '';
+    let dateVal = '';
+    if (sch.date) {
+      if (sch.date.includes('T')) {
+        dateVal = sch.date.split('T')[0];
+        const timePart = sch.date.split('T')[1];
+        if (timePart && timePart.includes(':')) {
+          const parts = timePart.split(':');
+          timeVal = `${parts[0]}:${parts[1]}`; // "HH:MM"
+        }
+      } else {
+        dateVal = this.getLocalYMD(sch.date);
+      }
+    }
+    document.getElementById('scheduleDate').value = dateVal;
+    
+    const timeGrp = document.getElementById('scheduleTimeGroup');
+    const timeInput = document.getElementById('scheduleTime');
+    if (type === 'Meeting') {
+      if (timeGrp) timeGrp.style.display = 'block';
+      if (timeInput) {
+        timeInput.setAttribute('required', 'required');
+        timeInput.value = timeVal;
+      }
+    } else {
+      if (timeGrp) timeGrp.style.display = 'none';
+      if (timeInput) {
+        timeInput.removeAttribute('required');
+        timeInput.value = '';
+      }
+    }
+
     document.getElementById('scheduleLocation').value = sch.location || '';
     document.getElementById('scheduleNotes').value = sch.notes || '';
     
@@ -2309,14 +2849,27 @@ const app = {
     }
   },
 
-  async saveSchedule(e) {
-    e.preventDefault();
+  async saveSchedule(e, statusOverride = null) {
+    if (e) e.preventDefault();
     const id = document.getElementById('scheduleId').value;
     const type = document.getElementById('scheduleType').value;
     const title = document.getElementById('scheduleTitle').value;
-    const date = document.getElementById('scheduleDate').value;
+    const dateInputVal = document.getElementById('scheduleDate').value;
     const location = document.getElementById('scheduleLocation').value;
     const notes = document.getElementById('scheduleNotes').value;
+
+    let finalDate = dateInputVal;
+    if (type === 'Meeting') {
+      const timeInputVal = document.getElementById('scheduleTime').value;
+      if (timeInputVal) {
+        finalDate = `${dateInputVal}T${timeInputVal}:00+07:00`;
+      }
+    }
+
+    let statusVal = 'Active';
+    if (statusOverride) {
+      statusVal = statusOverride;
+    }
 
     this.showLoading(true, "Menyimpan Jadwal...");
     try {
@@ -2326,9 +2879,10 @@ const app = {
           ...existing,
           type: type,
           title: title,
-          date: date,
+          date: finalDate,
           location: location,
-          notes: notes
+          notes: notes,
+          status: statusOverride ? statusOverride : (existing.status || 'Active')
         };
         await this.updateRow('Schedules', payload);
         this.showAlert("Jadwal berhasil diperbarui!", "success");
@@ -2337,9 +2891,10 @@ const app = {
           id: Date.now().toString(),
           type: type,
           title: title,
-          date: date,
+          date: finalDate,
           location: location,
           notes: notes,
+          status: statusVal,
           createdat: new Date().toISOString()
         };
         await this.addRow('Schedules', newSchedule);
@@ -2357,28 +2912,76 @@ const app = {
 
   // === Feature: Users ===
   renderUsers() {
-    const table = document.getElementById('usersTable');
-    table.innerHTML = '';
-    this.data.users.forEach(u => {
-      table.innerHTML += `
-        <tr>
-          <td>${u.username}</td>
-          <td><span style="padding:4px 8px; border-radius:4px; background:rgba(255,255,255,0.1); font-size:12px;">${u.role}</span></td>
-          <td>
-            <div style="display:flex; gap:4px;">
-              <button class="btn btn-secondary btn-sm" onclick="app.editUser('${u.id}')" title="Edit"><i data-lucide="edit-2" style="width:16px;"></i></button>
-              <button class="btn btn-danger btn-sm" onclick="app.deleteUser('${u.id}')" title="Delete"><i data-lucide="trash-2" style="width:16px;"></i></button>
-            </div>
-          </td>
-        </tr>
+    const container = document.getElementById('usersTable');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (this.data.users.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center; padding: 3rem 1rem; color: var(--color-text-muted);">
+          <i data-lucide="users" style="width:40px; height:40px; margin-bottom:12px; opacity:0.4;"></i>
+          <p style="font-size:13px;">Belum ada user terdaftar.</p>
+        </div>
+      `;
+      lucide.createIcons();
+      return;
+    }
+
+    this.data.users.forEach((u, idx) => {
+      const isSuperAdmin = u.role === 'super admin';
+      const isAdmin = u.role === 'admin';
+      const avatarIcon = isSuperAdmin ? 'shield-alert' : (isAdmin ? 'shield-check' : 'user');
+      const displayName = u.name || u.username;
+      
+      let roleBadge = `<span class="user-role-badge user-role-user">User</span>`;
+      let avatarClass = 'user-card-avatar--user';
+      if (isSuperAdmin) {
+        roleBadge = `<span class="user-role-badge user-role-super-admin">Super Admin</span>`;
+        avatarClass = 'user-card-avatar--admin';
+      } else if (isAdmin) {
+        roleBadge = `<span class="user-role-badge user-role-admin">Admin</span>`;
+        avatarClass = 'user-card-avatar--admin';
+      }
+      const isLast = idx === this.data.users.length - 1;
+
+      const statusBadge = u.status === 'Pending' ? ` <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px; vertical-align: middle;">PENDING</span>` : '';
+
+      container.innerHTML += `
+        <div class="user-card-item${isLast ? ' user-card-last' : ''}">
+          <div class="user-card-avatar ${avatarClass}">
+            <i data-lucide="${avatarIcon}" style="width:17px; height:17px; pointer-events:none;"></i>
+          </div>
+          <div class="user-card-info">
+            <span class="user-card-name">${this.escapeHTML(displayName)}${statusBadge}</span>
+            <span class="user-card-sub">@${this.escapeHTML(u.username)}</span>
+          </div>
+          ${roleBadge}
+          <div class="user-card-actions">
+            <button class="btn btn-secondary btn-sm" onclick="app.editUser('${u.id}')" title="Edit User">
+              <i data-lucide="edit-2" style="width:14px; height:14px;"></i> Edit
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="app.deleteUser('${u.id}')" title="Hapus User">
+              <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+            </button>
+          </div>
+        </div>
       `;
     });
+
     lucide.createIcons();
   },
 
   openAddUserModal() {
     document.getElementById('userForm').reset();
     document.getElementById('userId').value = '';
+    // Reset password field ke type password + ikon eye awal
+    const pwdInput = document.getElementById('userPassword');
+    if (pwdInput) pwdInput.type = 'password';
+    const toggleBtn = document.querySelector('#userModal .password-toggle-btn');
+    if (toggleBtn) {
+      toggleBtn.innerHTML = '<i data-lucide="eye" style="width:16px; height:16px;"></i>';
+      lucide.createIcons({ nodes: [toggleBtn] });
+    }
     this.openModal('userModal');
   },
 
@@ -2386,8 +2989,24 @@ const app = {
     const u = this.data.users.find(x => x.id == id);
     if(u) {
       document.getElementById('userId').value = u.id;
+      // Isi nama lengkap
+      const nameEl = document.getElementById('userFullName');
+      if (nameEl) nameEl.value = u.name || '';
       document.getElementById('userName').value = u.username;
-      document.getElementById('userPassword').value = u.password || ''; // fallback if hidden
+      // Kosongkan password — jangan tampilkan hash. Biarkan kosong = tidak ubah password.
+      const pwdInput = document.getElementById('userPassword');
+      if (pwdInput) {
+        pwdInput.value = '';
+        pwdInput.type = 'password';
+        pwdInput.placeholder = 'Kosongkan jika tidak ingin ubah password';
+        pwdInput.removeAttribute('required');
+      }
+      // Reset ikon eye ke kondisi awal
+      const toggleBtn = document.querySelector('#userModal .password-toggle-btn');
+      if (toggleBtn) {
+        toggleBtn.innerHTML = '<i data-lucide="eye" style="width:16px; height:16px;"></i>';
+        lucide.createIcons({ nodes: [toggleBtn] });
+      }
       document.getElementById('userRole').value = u.role;
       this.openModal('userModal');
     }
@@ -2400,8 +3019,8 @@ const app = {
     }
   },
 
-  async saveUser(e) {
-    e.preventDefault();
+  async saveUser(e, statusOverride = null) {
+    if (e) e.preventDefault();
     const id = document.getElementById('userId').value;
     const username = document.getElementById('userName').value.trim();
     
@@ -2411,18 +3030,27 @@ const app = {
       return;
     }
     
-    let passwordVal = document.getElementById('userPassword').value;
-    if (passwordVal === "********") {
-      passwordVal = "";
-    } else {
-      passwordVal = await this.hashPassword(passwordVal);
+    const passwordInput = document.getElementById('userPassword').value.trim();
+    let passwordVal = '';
+
+    if (passwordInput === '' && id) {
+      // Mode edit: password dikosongkan → pertahankan password lama
+      const existingUser = this.data.users.find(u => u.id == id);
+      passwordVal = existingUser ? (existingUser.password || '') : '';
+    } else if (passwordInput !== '') {
+      // Password baru diisi → hash
+      passwordVal = await this.hashPassword(passwordInput);
     }
+
+    const fullName = (document.getElementById('userFullName')?.value || '').trim();
 
     const payload = {
       id: id || Date.now().toString(),
+      name: fullName || username,
       username: username,
       password: passwordVal,
-      role: document.getElementById('userRole').value
+      role: document.getElementById('userRole').value,
+      status: statusOverride ? statusOverride : 'Active'
     };
     
     if(id) {
@@ -2431,6 +3059,13 @@ const app = {
       await this.addRow('Users', payload);
     }
     
+    // Reset field password ke required & placeholder normal
+    const pwdInput = document.getElementById('userPassword');
+    if (pwdInput) {
+      pwdInput.setAttribute('required', '');
+      pwdInput.placeholder = '';
+    }
+
     this.closeModal('userModal');
     this.renderUsers();
     document.getElementById('userForm').reset();
@@ -2448,8 +3083,8 @@ const app = {
     this.openModal('profileModal');
   },
 
-  async saveProfile(e) {
-    e.preventDefault();
+  async saveProfile(e, isDraft = false) {
+    if (e) e.preventDefault();
     if (!this.data.currentUser) return;
     
     const name = document.getElementById('profileName').value.trim();
@@ -2458,6 +3093,12 @@ const app = {
     
     if (!name || !username || !password) {
       this.showAlert("Semua field harus diisi!", "warning");
+      return;
+    }
+    
+    if (isDraft) {
+      this.closeModal('profileModal');
+      this.showAlert("Profil berhasil disimpan sebagai Draft!", "success");
       return;
     }
     
@@ -2759,9 +3400,14 @@ const app = {
         if (match) {
           const monthStr = invDateStr.substring(0, 7);
           if (!monthlyGroups[monthStr]) {
-            monthlyGroups[monthStr] = { totalAmount: 0 };
+            monthlyGroups[monthStr] = { totalAmount: 0, totalPaid: 0, totalRemaining: 0 };
           }
+          const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+          const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+          
           monthlyGroups[monthStr].totalAmount += Number(inv.totalAmount);
+          monthlyGroups[monthStr].totalPaid += paid;
+          monthlyGroups[monthStr].totalRemaining += remaining;
         }
       });
       sortedMonths = Object.keys(monthlyGroups).sort();
@@ -2771,44 +3417,206 @@ const app = {
       const [year, month] = mKey.split('-');
       return new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
     });
-    const revenues = sortedMonths.map(l => monthlyGroups[l].totalAmount);
+    
+    const paidTotals = sortedMonths.map(l => monthlyGroups[l].totalPaid || 0);
+    const unpaidTotals = sortedMonths.map(l => monthlyGroups[l].totalRemaining || 0);
 
     this.reportChartInstance = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: labels,
-        datasets: [{
-          label: (this.data.language === 'en') ? 'Revenue by Month (Rp)' : 'Pendapatan Bulanan (Rp)',
-          data: revenues,
-          backgroundColor: '#d4af37',
-          borderColor: '#e5c358',
-          borderWidth: 1,
-          borderRadius: 4
-        }]
+        datasets: [
+          {
+            label: (this.data.language === 'en') ? 'Terbayar (Paid)' : 'Terbayar (Lunas)',
+            data: paidTotals,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.25)',
+            borderWidth: 1.5,
+            borderRadius: 4
+          },
+          {
+            label: (this.data.language === 'en') ? 'Piutang (Receivable)' : 'Piutang (Sisa)',
+            data: unpaidTotals,
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.25)',
+            borderWidth: 1.5,
+            borderRadius: 4
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
           legend: {
+            display: true,
             labels: {
-              color: 'var(--color-text)'
+              color: 'var(--color-text-muted)',
+              font: { family: 'Plus Jakarta Sans, sans-serif', size: 11 }
+            }
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                  label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.parsed.y);
+                }
+                return label;
+              }
             }
           }
         },
         scales: { 
           y: { 
+            stacked: true,
             beginAtZero: true, 
             grid: { color: 'rgba(255,255,255,0.06)' }, 
-            ticks: { color: 'var(--color-text-muted)'} 
+            ticks: { 
+              color: 'var(--color-text-muted)',
+              callback: function(value) {
+                if (value >= 1000000) return (value / 1000000) + 'jt';
+                if (value >= 1000) return (value / 1000) + 'rb';
+                return value;
+              }
+            } 
           },
           x: { 
+            stacked: true,
             grid: { display: false }, 
             ticks: { color: 'var(--color-text-muted)'} 
           }
         }
       }
     });
+  },
+
+  exportReportToExcel() {
+    this.showLoading(true, "Mengekspor laporan ke Excel...");
+    try {
+      const filteredInvoices = this.data.invoices.filter(inv => {
+        if (!inv.cateringDate) return false;
+        const invDateStr = inv.cateringDate.substring(0, 10);
+        
+        if (this.reportState.filterType === 'year') {
+          const year = parseInt(invDateStr.substring(0, 4));
+          return year === this.reportState.selectedYear;
+        } else {
+          return invDateStr >= this.reportState.startDate && invDateStr <= this.reportState.endDate;
+        }
+      });
+
+      const monthlyGroups = {};
+      
+      filteredInvoices.forEach(inv => {
+        const monthStr = inv.cateringDate.substring(0, 7);
+        if (!monthlyGroups[monthStr]) {
+          monthlyGroups[monthStr] = {
+            monthKey: monthStr,
+            invoiceCount: 0,
+            totalAmount: 0,
+            totalPaid: 0,
+            totalRemaining: 0
+          };
+        }
+        
+        const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+        const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+        
+        monthlyGroups[monthStr].invoiceCount += 1;
+        monthlyGroups[monthStr].totalAmount += Number(inv.totalAmount);
+        monthlyGroups[monthStr].totalPaid += paid;
+        monthlyGroups[monthStr].totalRemaining += remaining;
+      });
+
+      const sortedMonths = Object.keys(monthlyGroups).sort();
+      
+      if (sortedMonths.length === 0) {
+        this.showAlert("Tidak ada data transaksi untuk diekspor pada filter terpilih.", "warning");
+        this.showLoading(false);
+        return;
+      }
+
+      let filterDesc = '';
+      if (this.reportState.filterType === 'year') {
+        filterDesc = `Tahun ${this.reportState.selectedYear}`;
+      } else {
+        filterDesc = `Periode ${this.formatDate(this.reportState.startDate)} sd ${this.formatDate(this.reportState.endDate)}`;
+      }
+
+      const dataRows = [];
+      dataRows.push(["POETRY'S CATERING - LAPORAN PENDAPATAN BULANAN"]);
+      dataRows.push([`Filter Parameter: ${filterDesc}`]);
+      dataRows.push([`Tanggal Ekspor: ${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`]);
+      dataRows.push([]); // Spacer row
+
+      // Headers
+      dataRows.push(["Bulan", "Jumlah Invoice", "Total Tagihan (Rp)", "Total Terbayar (Rp)", "Sisa Tagihan (Rp)"]);
+
+      let grandTotalCount = 0;
+      let grandTotalAmount = 0;
+      let grandTotalPaid = 0;
+      let grandTotalRemaining = 0;
+
+      sortedMonths.forEach(mKey => {
+        const group = monthlyGroups[mKey];
+        grandTotalCount += group.invoiceCount;
+        grandTotalAmount += group.totalAmount;
+        grandTotalPaid += group.totalPaid;
+        grandTotalRemaining += group.totalRemaining;
+        
+        const [year, month] = mKey.split('-');
+        const monthName = new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+        
+        dataRows.push([
+          monthName,
+          group.invoiceCount,
+          group.totalAmount,
+          group.totalPaid,
+          group.totalRemaining
+        ]);
+      });
+
+      // Total row
+      dataRows.push([
+        "TOTAL KESELURUHAN",
+        grandTotalCount,
+        grandTotalAmount,
+        grandTotalPaid,
+        grandTotalRemaining
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet(dataRows);
+      
+      // Auto-width adjustment for columns
+      const colWidths = [
+        { wch: 25 }, // Bulan
+        { wch: 15 }, // Jumlah Invoice
+        { wch: 20 }, // Total Tagihan
+        { wch: 20 }, // Total Terbayar
+        { wch: 20 }  // Sisa Tagihan
+      ];
+      ws['!cols'] = colWidths;
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Laporan Pendapatan");
+
+      const safeFilterDesc = filterDesc.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Laporan_Pendapatan_${safeFilterDesc}.xlsx`;
+      XLSX.writeFile(wb, filename);
+
+      this.showAlert("Laporan Pendapatan berhasil diekspor ke Excel!", "success");
+    } catch (err) {
+      console.error(err);
+      this.showAlert("Gagal mengekspor laporan ke Excel.", "error");
+    } finally {
+      this.showLoading(false);
+    }
   },
 
   // === Settings ===
@@ -2831,19 +3639,45 @@ const app = {
   getLocalYMD(val) {
     if (!val) return '';
     if (typeof val === 'string' && val.length === 10 && val.includes('-')) return val;
+    if (typeof val === 'string' && val.includes('T')) {
+      return val.split('T')[0];
+    }
     const d = new Date(val);
-    if (isNaN(d)) return val;
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    if (isNaN(d.getTime())) return val;
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const parts = formatter.formatToParts(d);
+      const y = parts.find(p => p.type === 'year').value;
+      const m = parts.find(p => p.type === 'month').value;
+      const day = parts.find(p => p.type === 'day').value;
+      return `${y}-${m}-${day}`;
+    } catch(e) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
   },
 
   formatDate(dateStr) {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
-    if (isNaN(d)) return dateStr;
-    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (isNaN(d.getTime())) return dateStr;
+    try {
+      return d.toLocaleDateString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+    } catch(e) {
+      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
   },
 
   formatCurrency(num) {
@@ -3009,6 +3843,11 @@ const app = {
   },
 
   importInvoicesFromExcel(e) {
+    const role = this.data.currentUser ? this.data.currentUser.role : 'user';
+    if (role !== 'admin' && role !== 'super admin') {
+      this.showAlert("Anda tidak memiliki izin untuk mengimpor invoice.", "error", "Akses Ditolak");
+      return;
+    }
     const file = e.target.files[0];
     if (!file) return;
 
@@ -3260,7 +4099,7 @@ const app = {
     if (pageItems.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="5" style="text-align: center; padding: 30px; color: var(--color-text-muted);">
+          <td colspan="4" style="text-align: center; padding: 30px; color: var(--color-text-muted);">
             Tidak ada menu yang cocok.
           </td>
         </tr>
@@ -3269,7 +4108,6 @@ const app = {
       pageItems.forEach(m => {
         const state = this.menuModalState.selectedItems[m.id] || { qty: 1, checked: false };
         const checkedAttr = state.checked ? 'checked' : '';
-        const disabledAttr = state.checked ? '' : 'disabled';
         const rowClass = state.checked ? 'class="menu-checked-row"' : '';
 
         tbody.innerHTML += `
@@ -3278,14 +4116,11 @@ const app = {
               <input type="checkbox" id="menu-check-${m.id}" ${checkedAttr} onchange="app.toggleMenuModalItem('${m.id}', this.checked)" style="width: 18px; height: 18px; cursor: pointer;">
             </td>
             <td style="vertical-align: middle;">
-              <label for="menu-check-${m.id}" style="cursor: pointer; font-weight: 500; display: block; margin-bottom: 0;">${m.name}</label>
-              ${m.description ? `<small style="display: block; color: var(--color-text-muted); font-size: 11px;">${m.description}</small>` : ''}
+              <label for="menu-check-${m.id}" style="cursor: pointer; font-weight: 500; display: block; margin-bottom: 0;">${this.escapeHTML(m.name)}</label>
+              ${m.description ? `<small style="display: block; color: var(--color-text-muted); font-size: 11px;">${this.escapeHTML(m.description)}</small>` : ''}
             </td>
             <td style="text-align: right; vertical-align: middle; font-weight: 600;">${this.formatCurrency(m.price)}</td>
-            <td style="text-align: center; vertical-align: middle;"><span class="badge" style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 4px;">${m.unit || 'pax'}</span></td>
-            <td style="text-align: center; vertical-align: middle;">
-              <input type="number" id="menu-qty-${m.id}" value="${state.qty}" min="1" ${disabledAttr} oninput="app.updateMenuModalItemQty('${m.id}', this.value)" class="menu-modal-qty-input">
-            </td>
+            <td style="text-align: center; vertical-align: middle;"><span class="badge" style="background: rgba(255,255,255,0.08); padding: 4px 8px; border-radius: 4px;">${this.escapeHTML(m.unit || 'pax')}</span></td>
           </tr>
         `;
       });
@@ -3482,6 +4317,10 @@ const app = {
     if (editInvDiscountValue) {
       editInvDiscountValue.addEventListener('input', () => this.updateEditInvoiceItemsTable());
     }
+    const editInvPaidInput = document.getElementById('editInvPaidAmount');
+    if (editInvPaidInput) {
+      editInvPaidInput.addEventListener('input', () => this.updateEditInvoiceItemsTable());
+    }
     
     // Schedule events
     const addScheduleForm = document.getElementById('addScheduleForm');
@@ -3513,6 +4352,23 @@ const app = {
     const btnCloseChart = document.getElementById('btnCloseReportChart');
     if (btnCloseChart) {
       btnCloseChart.addEventListener('click', () => this.toggleReportChart());
+    }
+
+    // Standalone Schedule Type change listener
+    const schType = document.getElementById('scheduleType');
+    if (schType) {
+      schType.addEventListener('change', () => {
+        const timeGrp = document.getElementById('scheduleTimeGroup');
+        const timeInput = document.getElementById('scheduleTime');
+        if (schType.value === 'Meeting') {
+          timeGrp.style.display = 'block';
+          timeInput.setAttribute('required', 'required');
+        } else {
+          timeGrp.style.display = 'none';
+          timeInput.removeAttribute('required');
+          timeInput.value = '';
+        }
+      });
     }
 
     // Dynamic nav indicator alignment on window resize

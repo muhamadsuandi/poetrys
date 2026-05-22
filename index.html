@@ -11,7 +11,26 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
   
   <!-- CSS -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260522_v6">
+  
+  <!-- Nav Active Override — inline to prevent cache issues -->
+  <style>
+    /* Active nav tab: gold background, black text — high contrast, always readable */
+    body .nav-tab.active,
+    body.light-theme .nav-tab.active {
+      background: #d4af37 !important;
+      color: #111111 !important;
+      font-weight: 700 !important;
+      border-radius: 8px !important;
+      box-shadow: 0 3px 10px rgba(212, 175, 55, 0.3) !important;
+    }
+    /* Hide the animated indicator — replaced by direct background above */
+    .nav-indicator {
+      display: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+  </style>
   
   <!-- Libraries -->
   <script defer src="https://unpkg.com/lucide@latest"></script>
@@ -81,7 +100,7 @@
         <a href="#" data-page="invoices" class="nav-tab nav-link" data-lang-key="invoices"><i data-lucide="file-text"></i> <span>Invoices</span></a>
         <a href="#" data-page="schedules" class="nav-tab nav-link" data-lang-key="schedules"><i data-lucide="calendar"></i> <span>Schedules</span></a>
         <a href="#" data-page="menus" class="nav-tab nav-link admin-only" data-lang-key="masterMenu"><i data-lucide="utensils"></i> <span>Master Menu</span></a>
-        <a href="#" data-page="users" class="nav-tab nav-link admin-only" data-lang-key="masterUser"><i data-lucide="users"></i> <span>Master User</span></a>
+        <a href="#" data-page="users" class="nav-tab nav-link super-admin-only" data-lang-key="masterUser"><i data-lucide="users"></i> <span>Master User</span></a>
         <a href="#" data-page="reports" class="nav-tab nav-link admin-only" data-lang-key="reports"><i data-lucide="bar-chart-3"></i> <span>Reports</span></a>
         <a href="#" data-page="settings" class="nav-tab nav-link" data-lang-key="settings"><i data-lucide="settings"></i> <span>Settings</span></a>
       </nav>
@@ -165,6 +184,7 @@
           </div>
         </div>
 
+        <!-- ROW 1: Two existing widgets (Nearest Schedules + Revenue Chart) -->
         <div class="dashboard-widgets">
           <div class="widget glass">
             <h3 data-lang-key="nearestSchedules">Jadwal Katering Terdekat</h3>
@@ -190,10 +210,14 @@
               <canvas id="dashboardChart"></canvas>
             </div>
           </div>
+        </div>
 
-        <div class="dashboard-widgets mt-6">
-          <div class="widget glass" style="grid-column: span 2;">
-            <h3 data-lang-key="upcomingDueInvoices">Upcoming Due Invoices (Closest 5 Unpaid)</h3>
+        <!-- ROW 2: Full-width Due Invoices + Calendar side by side -->
+        <div class="dashboard-row-2 mt-6">
+
+          <!-- Left: Due Invoices Table -->
+          <div class="widget glass">
+            <h3 data-lang-key="upcomingDueInvoices">Upcoming Due Invoices <span style="font-size:0.8em; font-weight:400; color:var(--color-text-muted);">(Closest 5 Unpaid)</span></h3>
             <div class="table-responsive">
               <table class="table table-bordered">
                 <thead>
@@ -212,6 +236,43 @@
               </table>
             </div>
           </div>
+
+          <!-- Right: Mini Calendar Widget -->
+          <div class="widget glass dashboard-calendar-widget">
+            <div class="dash-cal-header">
+              <button class="btn btn-secondary btn-sm dash-cal-nav" onclick="app.dashCalPrev()" title="Bulan Sebelumnya">
+                <i data-lucide="chevron-left" style="width:16px;height:16px;"></i>
+              </button>
+              <h3 id="dashCalMonthYear" style="margin:0; font-size:1rem; font-weight:700; color:var(--color-primary); text-align:center; flex:1;">Mei 2026</h3>
+              <button class="btn btn-secondary btn-sm dash-cal-nav" onclick="app.dashCalNext()" title="Bulan Berikutnya">
+                <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+              </button>
+            </div>
+
+            <!-- Day labels -->
+            <div class="dash-cal-day-labels">
+              <span style="color:var(--color-danger);">Min</span>
+              <span>Sen</span>
+              <span>Sel</span>
+              <span>Rab</span>
+              <span>Kam</span>
+              <span>Jum</span>
+              <span>Sab</span>
+            </div>
+
+            <!-- Day grid -->
+            <div id="dashCalDays" class="dash-cal-grid">
+              <!-- Injected via JS -->
+            </div>
+
+            <!-- Legend -->
+            <div class="dash-cal-legend">
+              <span class="dash-cal-dot" style="background:var(--color-primary);"></span><span>Invoice</span>
+              <span class="dash-cal-dot" style="background:#38bdf8;"></span><span>Booking</span>
+              <span class="dash-cal-dot" style="background:#8b5cf6;"></span><span>Meeting</span>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -225,20 +286,63 @@
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data" data-lang-key="refresh"><i data-lucide="refresh-cw"></i> Refresh</button>
             <input type="file" id="importExcelInput" accept=".xlsx, .xls, .csv" style="display: none;" onchange="app.importInvoicesFromExcel(event)">
-            <button class="btn btn-success" onclick="document.getElementById('importExcelInput').click()" data-lang-key="importExcel"><i data-lucide="upload"></i> Import Excel</button>
-            <button class="btn btn-primary admin-only" onclick="app.navigate('create-invoice')" data-lang-key="newInvoice"><i data-lucide="plus"></i> Create Invoice</button>
+            <button class="btn btn-success admin-only" onclick="document.getElementById('importExcelInput').click()" data-lang-key="importExcel"><i data-lucide="upload"></i> Import Excel</button>
+            <button class="btn btn-primary admin-only" onclick="app.openCreateInvoiceModal()" data-lang-key="newInvoice"><i data-lucide="plus"></i> Create Invoice</button>
           </div>
         </header>
         <div class="glass p-6">
-          <!-- Invoices Search Bar -->
-          <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px;">
-            <div class="search-input-group" style="position: relative; display: flex; align-items: center; flex: 1;">
-              <input type="text" id="invoiceSearchText" class="schedule-search-input" placeholder="Cari nama pelanggan atau nomor invoice..." oninput="app.filterInvoices()" style="width: 100%; padding-left: 36px; height: 42px;">
-              <i data-lucide="search" style="position: absolute; left: 12px; width: 18px; height: 18px; color: var(--color-primary); pointer-events: none;"></i>
+          <!-- Invoices Filter Bar: Unified single-row bar -->
+          <div class="invoice-filterbar-wrapper">
+
+            <!-- Search Segment -->
+            <div class="invoice-filterbar-segment invoice-filterbar-search">
+              <i data-lucide="search" class="ifb-icon"></i>
+              <input type="text" id="invoiceSearchText" placeholder="Cari nama pelanggan atau nomor invoice..." oninput="app.filterInvoices()">
             </div>
-            <button class="btn btn-secondary" onclick="app.clearInvoiceFilters()" style="padding: 0 16px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--color-border); height: 42px;">
-              <i data-lucide="x" style="width:16px; height:16px;"></i> <span data-lang-key="clear">Clear</span>
+
+            <div class="invoice-filterbar-divider"></div>
+
+            <!-- Status Segment -->
+            <div class="invoice-filterbar-segment">
+              <i data-lucide="filter" class="ifb-icon"></i>
+              <label class="ifb-label">Status</label>
+              <select id="invoiceFilterStatus" onchange="app.filterInvoices()">
+                <option value="all">Semua</option>
+                <option value="Lunas">✅ Lunas</option>
+                <option value="DP / Sebagian">🟡 DP / Sebagian</option>
+                <option value="Belum Lunas">❌ Belum Lunas</option>
+              </select>
+            </div>
+
+            <div class="invoice-filterbar-divider"></div>
+
+            <!-- Date From Segment -->
+            <div class="invoice-filterbar-segment">
+              <i data-lucide="calendar" class="ifb-icon"></i>
+              <label class="ifb-label">Dari</label>
+              <input type="date" id="invoiceFilterDateFrom" onchange="app.filterInvoices()">
+            </div>
+
+            <div class="invoice-filterbar-divider"></div>
+
+            <!-- Date To Segment -->
+            <div class="invoice-filterbar-segment">
+              <label class="ifb-label">Sampai</label>
+              <input type="date" id="invoiceFilterDateTo" onchange="app.filterInvoices()">
+            </div>
+
+            <!-- Clear Button -->
+            <button class="invoice-filterbar-clear" onclick="app.clearInvoiceFilters()" title="Reset Filter">
+              <i data-lucide="x" style="width:15px; height:15px;"></i>
+              <span>Clear</span>
             </button>
+
+          </div>
+
+          <!-- Result Badge -->
+          <div id="invoiceFilterResultBadge" class="invoice-filter-result-badge" style="display:none;">
+            <i data-lucide="list-filter" style="width:13px; height:13px;"></i>
+            <span id="invoiceFilterResultText">0 hasil</span>
           </div>
 
           <div class="table-responsive">
@@ -273,97 +377,144 @@
             <h1 data-lang-key="newInvoice">Create Invoice</h1>
             <p data-lang-key="generateInvoiceSub">Generate a new catering invoice and schedule</p>
           </div>
-          <button class="btn btn-secondary" onclick="app.navigate('invoices')" data-lang-key="back"><i data-lucide="arrow-left"></i> Back</button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary" onclick="app.navigate('invoices')"><i data-lucide="arrow-left"></i> Kembali</button>
+          </div>
         </header>
-
-        <div class="invoice-builder">
-          <div class="invoice-form glass p-6">
-            <h3>Customer Details</h3>
-            <input type="hidden" id="invEditId" value="">
-            <div class="form-grid">
-              <div class="form-group">
-                <label>Customer Name <span style="color: var(--color-danger);">*</span></label>
-                <input type="text" id="invCustomerName" placeholder="John Doe" required>
-              </div>
-              <div class="form-group">
-                <label>Customer Phone <span style="color: var(--color-danger);">*</span></label>
-                <input type="text" id="invCustomerPhone" placeholder="0812..." required>
-              </div>
-              <div class="form-group" style="grid-column: span 2;">
-                <label>Catering Location <span style="color: var(--color-danger);">*</span></label>
-                <input type="text" id="invCateringLocation" placeholder="Alamat lengkap..." required>
-              </div>
-              <div class="form-group">
-                <label>Catering Date (Schedule) <span style="color: var(--color-danger);">*</span></label>
-                <input type="date" id="invCateringDate" required>
-              </div>
-              <div class="form-group">
-                <label>Invoice Date <span style="color: var(--color-danger);">*</span></label>
-                <input type="date" id="invDateCreated" required>
-              </div>
-            </div>
-
-            <div class="invoice-section-box">
-              <h3 style="margin-top: 0;">Select Menus</h3>
-              <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 15px;">
-                <div class="search-input-wrapper" style="flex: 1; position: relative;">
-                  <input type="text" id="invMenuSelect" readonly placeholder="Ketik / Klik untuk mencari menu..." onclick="app.openMenuSelection('create')" style="cursor: pointer; padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
-                  <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted); cursor: pointer;" onclick="app.openMenuSelection('create')"></i>
+        <div class="glass p-6">
+          <div class="invoice-builder">
+            <div class="invoice-form" style="background: transparent; padding: 0; border: none; box-shadow: none;">
+              <h3>Customer Details</h3>
+              <input type="hidden" id="invEditId" value="">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Customer Name <span style="color: var(--color-danger);">*</span></label>
+                  <input type="text" id="invCustomerName" placeholder="John Doe" required>
                 </div>
-                <button class="btn btn-primary" id="btnAddMenuItem" onclick="app.openMenuSelection('create')"><i data-lucide="plus"></i> Pilih Menu</button>
+                <div class="form-group">
+                  <label>Customer Phone <span style="color: var(--color-danger);">*</span></label>
+                  <input type="text" id="invCustomerPhone" placeholder="0812..." required>
+                </div>
+                <div class="form-group" style="grid-column: span 2;">
+                  <label>Catering Location <span style="color: var(--color-danger);">*</span></label>
+                  <input type="text" id="invCateringLocation" placeholder="Alamat lengkap..." required>
+                </div>
+                <div class="form-group">
+                  <label>Catering Date (Schedule) <span style="color: var(--color-danger);">*</span></label>
+                  <input type="date" id="invCateringDate" required>
+                </div>
+                <div class="form-group">
+                  <label>Invoice Date <span style="color: var(--color-danger);">*</span></label>
+                  <input type="date" id="invDateCreated" required>
+                </div>
               </div>
 
-              <div class="table-responsive mt-4">
-                <table class="table table-bordered invoice-items-table">
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Price</th>
-                      <th>Qty</th>
-                      <th>Unit</th>
-                      <th>Subtotal</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="invItemsTable">
-                    <!-- Items go here -->
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colspan="4" class="text-right"><strong>Subtotal:</strong></td>
-                      <td colspan="2"><span id="invSubtotal">Rp 0</span></td>
-                    </tr>
-                    <tr>
-                      <td colspan="4" class="text-right" style="vertical-align: middle;"><strong>Diskon:</strong></td>
-                      <td colspan="2">
-                        <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-start;">
-                          <select id="invDiscountType" class="form-control" style="width: 70px; padding: 4px;">
-                            <option value="none">Tidak</option>
-                            <option value="percent">%</option>
-                            <option value="nominal">Rp</option>
-                          </select>
-                          <input type="number" id="invDiscountValue" value="0" min="0" class="form-control" style="width: 100px; padding: 4px; display: none;">
-                          <span id="invDiscountLabel" style="font-weight: 500; color: var(--color-danger); display: none;">- Rp 0</span>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td colspan="4" class="text-right"><strong>Grand Total:</strong></td>
-                      <td colspan="2"><strong id="invGrandTotal">Rp 0</strong></td>
-                    </tr>
-                    <tr>
-                      <td colspan="4" class="text-right" style="vertical-align: middle;"><strong>Uang Muka (DP) / Dibayar:</strong></td>
-                      <td colspan="2">
-                        <input type="number" id="invPaidAmount" value="0" min="0" class="form-control">
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
+              <div class="invoice-section-box" style="margin-top: 24px;">
+                <h3 style="margin-top: 0;">Select Menus</h3>
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 15px;">
+                  <div class="search-input-wrapper" style="flex: 1; position: relative;">
+                    <input type="text" id="invMenuSelect" readonly placeholder="Ketik / Klik untuk mencari menu..." onclick="app.openMenuSelection('create')" style="cursor: pointer; padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
+                    <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted); cursor: pointer;" onclick="app.openMenuSelection('create')"></i>
+                  </div>
+                  <button class="btn btn-primary" id="btnAddMenuItem" onclick="app.openMenuSelection('create')"><i data-lucide="plus"></i> Pilih Menu</button>
+                </div>
 
-            <div class="form-actions mt-6">
-              <button class="btn btn-success" id="btnSaveInvoice"><i data-lucide="save"></i> Save Invoice</button>
+                <div class="table-responsive mt-4">
+                  <table class="table table-bordered invoice-items-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Price</th>
+                        <th>Qty</th>
+                        <th>Unit</th>
+                        <th>Subtotal</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="invItemsTable">
+                      <!-- Items go here -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Summary: Subtotal, Diskon, Grand Total, Uang Muka & Sisa Tagihan -->
+                <div class="invoice-summary-card" style="margin-top: 24px;">
+                  <!-- Subtotal Row -->
+                  <div class="summary-row">
+                    <div class="summary-label">
+                      <i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                      <span>Subtotal:</span>
+                    </div>
+                    <span id="invSubtotal" class="summary-value">Rp 0</span>
+                  </div>
+
+                  <!-- Diskon Row -->
+                  <div class="summary-row">
+                    <div class="summary-label">
+                      <i data-lucide="percent" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                      <span>Diskon:</span>
+                    </div>
+                    <div class="summary-value">
+                      <div class="discount-input-group" style="width: 185px;">
+                        <select id="invDiscountType" class="discount-select" style="flex: 1;">
+                          <option value="none">Tidak</option>
+                          <option value="percent">%</option>
+                          <option value="nominal">Rp</option>
+                        </select>
+                        <input type="number" id="invDiscountValue" value="0" min="0" class="discount-input" style="display: none; width: 100px !important;">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Potongan Diskon Row -->
+                  <div class="summary-row" id="invDiscountRow" style="display: none;">
+                    <div class="summary-label">
+                      <i data-lucide="tag" style="width: 16px; height: 16px; color: var(--color-danger);"></i>
+                      <span>Potongan Diskon:</span>
+                    </div>
+                    <span id="invDiscountLabel" class="discount-amount-label" style="font-weight: 700; color: var(--color-danger); font-size: 0.95rem; width: 185px; justify-content: flex-end; text-align: right; display: inline-flex;">- Rp 0</span>
+                  </div>
+
+                  <!-- Grand Total Row -->
+                  <div class="summary-row grand-total-row">
+                    <div class="summary-label grand-total-label">
+                      <i data-lucide="receipt" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+                      <span>Grand Total:</span>
+                    </div>
+                    <strong id="invGrandTotal" class="grand-total-value">Rp 0</strong>
+                  </div>
+
+                  <!-- Uang Muka (DP) Row -->
+                  <div class="summary-row">
+                    <div class="summary-label">
+                      <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                      <span>Uang Muka (DP) / Dibayar:</span>
+                    </div>
+                    <div class="summary-value">
+                      <div class="currency-input-wrapper">
+                        <span class="currency-prefix">Rp</span>
+                        <input type="number" id="invPaidAmount" value="0" min="0" class="currency-field">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Sisa Tagihan Row -->
+                  <div class="summary-row">
+                    <div class="summary-label">
+                      <i data-lucide="coins" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                      <span>Sisa Tagihan:</span>
+                    </div>
+                    <span id="invRemainingBalance" class="remaining-balance-value paid-none">Rp 0</span>
+                  </div>
+                </div>
+
+                <div class="form-actions mt-6" style="display: flex; gap: 12px; align-items: center; justify-content: flex-end; max-width: 520px; margin-left: auto;">
+                  <button type="button" class="btn btn-secondary" onclick="app.navigate('invoices')"><i data-lucide="x"></i> Batal</button>
+                  <button type="button" class="btn btn-warning" onclick="app.saveInvoice(true)"><i data-lucide="file-text"></i> Draft</button>
+                  <button type="button" class="btn btn-success" id="btnSaveInvoice" onclick="app.saveInvoice(false)"><i data-lucide="save"></i> Save Invoice</button>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -460,7 +611,7 @@
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data"><i data-lucide="refresh-cw"></i> Refresh</button>
             <input type="file" id="menuImportFile" accept=".xlsx, .xls, .csv" style="display: none;" onchange="app.importExcel(event)">
-            <button class="btn btn-secondary" onclick="document.getElementById('menuImportFile').click()">
+            <button class="btn btn-secondary admin-only" onclick="document.getElementById('menuImportFile').click()">
               <i data-lucide="file-spreadsheet"></i> Import Excel
             </button>
             <button class="btn btn-primary" onclick="app.openAddMenuModal()"><i data-lucide="plus"></i> Add Menu</button>
@@ -504,30 +655,20 @@
       </section>
 
       <!-- PAGE: MASTER USER (ADMIN) -->
-      <section id="viewUsers" class="view admin-only">
+      <section id="viewUsers" class="view super-admin-only">
         <header class="page-header">
           <div>
             <h1>Master User</h1>
-            <p>Manage application users and roles</p>
+            <p>Kelola akun pengguna dan hak akses</p>
           </div>
           <div style="display: flex; gap: 8px;">
             <button class="btn btn-secondary" onclick="app.refreshData()" title="Refresh Data"><i data-lucide="refresh-cw"></i> Refresh</button>
             <button class="btn btn-primary" onclick="app.openAddUserModal()"><i data-lucide="user-plus"></i> Add User</button>
           </div>
         </header>
-        <div class="glass p-6">
-          <div class="table-responsive">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Role</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="usersTable"></tbody>
-            </table>
-          </div>
+        <div class="glass p-6" style="max-width: 700px; margin: 0 auto;">
+          <!-- User List -->
+          <div id="usersTable" class="user-card-list"></div>
         </div>
       </section>
 
@@ -570,6 +711,7 @@
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem;">
               <button type="submit" class="btn btn-primary"><i data-lucide="filter" style="width: 16px;"></i> Apply Filter</button>
               <button type="button" id="btnResetReportFilters" class="btn btn-secondary"><i data-lucide="rotate-ccw" style="width: 16px;"></i> Reset</button>
+              <button type="button" id="btnExportReportExcel" class="btn btn-success" onclick="app.exportReportToExcel()"><i data-lucide="file-spreadsheet" style="width: 16px;"></i> Export Excel</button>
               <button type="button" id="btnToggleReportChart" class="btn btn-secondary" style="margin-left: auto;">
                 <i data-lucide="pie-chart" style="width: 16px;"></i> Show Chart Resume
               </button>
@@ -694,7 +836,11 @@
             <label>Description</label>
             <textarea id="menuDesc" rows="3"></textarea>
           </div>
-          <button type="submit" class="btn btn-primary btn-block">Save Menu</button>
+          <div class="form-actions mt-4" style="display: flex; gap: 12px;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('menuModal')" style="flex: 1;"><i data-lucide="x"></i> Batal</button>
+            <button type="button" class="btn btn-warning" onclick="app.saveMenu(event, true)" style="flex: 1;"><i data-lucide="file-text"></i> Draft</button>
+            <button type="submit" class="btn btn-primary" style="flex: 1;"><i data-lucide="save"></i> Save Menu</button>
+          </div>
         </form>
       </div>
     </div>
@@ -707,39 +853,62 @@
         <button class="btn-icon" onclick="app.closeModal('userModal')"><i data-lucide="x"></i></button>
       </div>
       <div class="modal-body">
-        <form id="userForm">
+        <form id="userForm" onsubmit="app.saveUser(event)">
           <input type="hidden" id="userId">
           <div class="form-group">
+            <label>Nama Lengkap <span style="color: var(--color-danger);">*</span></label>
+            <input type="text" id="userFullName" placeholder="Nama lengkap pengguna" required>
+          </div>
+          <div class="form-group">
             <label>Username <span style="color: var(--color-danger);">*</span></label>
-            <input type="text" id="userName" required>
+            <input type="text" id="userName" placeholder="Username untuk login" required>
           </div>
           <div class="form-group">
             <label>Password <span style="color: var(--color-danger);">*</span></label>
-            <input type="text" id="userPassword" required>
+            <div class="password-input-wrapper">
+              <input type="password" id="userPassword" required autocomplete="new-password">
+              <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('userPassword')" title="Tampilkan/Sembunyikan Password" tabindex="-1">
+                <i data-lucide="eye" style="width:16px; height:16px;"></i>
+              </button>
+            </div>
           </div>
           <div class="form-group">
             <label>Role</label>
             <select id="userRole">
-              <option value="user">User (Invoice Only)</option>
-              <option value="admin">Admin (Full Access)</option>
+              <option value="user">User (Invoice & Standalone Schedules Only)</option>
+              <option value="admin">Admin (All Access, No User Mgmt)</option>
+              <option value="super admin">Super Admin (All Access)</option>
             </select>
           </div>
-          <button type="submit" class="btn btn-primary btn-block">Save User</button>
+          <div class="form-actions mt-4" style="display: flex; gap: 12px;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('userModal')" style="flex: 1;"><i data-lucide="x"></i> Batal</button>
+            <button type="button" class="btn btn-warning" onclick="app.saveUser(event, 'Pending')" style="flex: 1;"><i data-lucide="file-text"></i> Draft</button>
+            <button type="submit" class="btn btn-primary" style="flex: 1;"><i data-lucide="save"></i> Simpan User</button>
+          </div>
         </form>
       </div>
     </div>
   </div>
 
   <!-- EDIT INVOICE MODAL -->
-  <div class="modal-backdrop hidden" id="editInvoiceModal">
-    <div class="modal glass" style="max-width: 650px; width: 95%;">
-      <div class="modal-header">
-        <h3>Edit Invoice</h3>
-        <button class="btn-icon" onclick="app.closeModal('editInvoiceModal')"><i data-lucide="x"></i></button>
+  <div class="modal-backdrop hidden" id="editInvoiceModal" style="z-index: 2000;">
+    <div class="modal white-invoice-modal" style="max-width: 1000px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 20px !important; overflow: hidden;">
+      
+      <!-- Modal Header -->
+      <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+        <div>
+          <h2 style="margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--color-primary);" data-lang-key="editInvoice">Edit Invoice</h2>
+          <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: var(--color-text-muted);">Perbarui rincian faktur dan jadwal katering Anda</p>
+        </div>
+        <button type="button" class="btn-icon" onclick="app.closeModal('editInvoiceModal')" style="padding: 4px; border-radius: 50%;"><i data-lucide="x" style="width: 20px; height: 20px;"></i></button>
       </div>
-      <div class="modal-body" style="max-height: 80vh; overflow-y: auto; padding-right: 4px;">
-        <form id="editInvoiceForm" onsubmit="app.saveEditedInvoice(event)">
+
+      <!-- Modal Scrollable Content Body -->
+      <div class="modal-body" style="padding: 24px; overflow-y: auto; flex: 1;">
+        <form id="editInvoiceForm" onsubmit="app.saveEditedInvoice(event)" style="background: transparent; padding: 0; border: none; box-shadow: none; margin: 0;">
           <input type="hidden" id="editInvId">
+          
+          <h3>Customer Details</h3>
           <div class="form-grid">
             <div class="form-group">
               <label>Customer Name <span style="color: var(--color-danger);">*</span></label>
@@ -753,69 +922,117 @@
               <label>Catering Location <span style="color: var(--color-danger);">*</span></label>
               <input type="text" id="editInvCateringLocation" required>
             </div>
-            <div class="form-group">
+            <div class="form-group" style="grid-column: span 2;">
               <label>Catering Date <span style="color: var(--color-danger);">*</span></label>
               <input type="date" id="editInvCateringDate" required>
             </div>
-            <div class="form-group">
-              <label>Uang Muka (DP) / Dibayar (Rp) <span style="color: var(--color-danger);">*</span></label>
-              <input type="number" id="editInvPaidAmount" min="0" required>
-            </div>
           </div>
           
-          <h4 class="mt-6 mb-2" style="font-size: 14px; font-weight: 600; color: var(--color-primary);">Edit Item Menu</h4>
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
-            <div class="search-input-wrapper" style="flex: 1; position: relative;">
-              <input type="text" id="editInvMenuSelect" readonly placeholder="Ketik / Klik untuk mencari menu..." onclick="app.openMenuSelection('edit')" style="cursor: pointer; padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
-              <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted); cursor: pointer;" onclick="app.openMenuSelection('edit')"></i>
-            </div>
-            <button type="button" class="btn btn-primary" onclick="app.openMenuSelection('edit')" style="height: 38px; padding: 0.5rem 1rem;"><i data-lucide="plus"></i> Pilih Menu</button>
-          </div>
-          
-          <div class="table-responsive" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px; border: 1px solid var(--color-border); border-radius: 6px;">
-            <table class="table table-bordered invoice-items-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th style="text-align: right; padding: 8px;">Harga</th>
-                  <th style="text-align: center; padding: 8px;">Qty</th>
-                  <th style="text-align: center; padding: 8px;">Unit</th>
-                  <th style="text-align: right; padding: 8px;">Subtotal</th>
-                  <th style="text-align: center; padding: 8px;">Aksi</th>
-                </tr>
-              </thead>
-              <tbody id="editInvItemsTable">
-                <!-- Items go here -->
-              </tbody>
-            </table>
-          </div>
-          
-          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid var(--color-border);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 13px; font-weight: 500;">Subtotal:</span>
-              <span id="editInvSubtotal" style="font-size: 13px; font-weight: 500;">Rp 0</span>
+          <div class="invoice-section-box" style="margin-top: 24px;">
+            <h3 style="margin-top: 0;">Edit Item Menu</h3>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 15px;">
+              <div class="search-input-wrapper" style="flex: 1; position: relative;">
+                <input type="text" id="editInvMenuSelect" readonly placeholder="Ketik / Klik untuk mencari menu..." onclick="app.openMenuSelection('edit')" style="cursor: pointer; padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
+                <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted); cursor: pointer;" onclick="app.openMenuSelection('edit')"></i>
+              </div>
+              <button type="button" class="btn btn-primary" onclick="app.openMenuSelection('edit')"><i data-lucide="plus"></i> Pilih Menu</button>
             </div>
             
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 13px; font-weight: 500;">Diskon:</span>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <select id="editInvDiscountType" class="form-control" style="width: 70px; padding: 2px 4px; font-size: 12px;">
-                  <option value="none">Tidak</option>
-                  <option value="percent">%</option>
-                  <option value="nominal">Rp</option>
-                </select>
-                <input type="number" id="editInvDiscountValue" value="0" min="0" class="form-control" style="width: 90px; padding: 2px 4px; font-size: 12px; display: none;">
-                <span id="editInvDiscountLabel" style="font-size: 12px; font-weight: 500; color: var(--color-danger); display: none;">- Rp 0</span>
+            <div class="table-responsive mt-4">
+              <table class="table table-bordered invoice-items-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Price</th>
+                    <th>Qty</th>
+                    <th>Unit</th>
+                    <th>Subtotal</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="editInvItemsTable">
+                  <!-- Items go here -->
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- Summary: Subtotal, Diskon, Grand Total, Uang Muka & Sisa Tagihan (EDIT MODAL) -->
+            <div class="invoice-summary-card" style="margin-top: 24px;">
+              <!-- Subtotal Row -->
+              <div class="summary-row">
+                <div class="summary-label">
+                  <i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                  <span>Subtotal:</span>
+                </div>
+                <span id="editInvSubtotal" class="summary-value">Rp 0</span>
+              </div>
+
+              <!-- Diskon Row -->
+              <div class="summary-row">
+                <div class="summary-label">
+                  <i data-lucide="percent" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                  <span>Diskon:</span>
+                </div>
+                <div class="summary-value">
+                  <div class="discount-input-group" style="width: 185px;">
+                    <select id="editInvDiscountType" class="discount-select" style="flex: 1;">
+                      <option value="none">Tidak</option>
+                      <option value="percent">%</option>
+                      <option value="nominal">Rp</option>
+                    </select>
+                    <input type="number" id="editInvDiscountValue" value="0" min="0" class="discount-input" style="display: none; width: 100px !important;">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Potongan Diskon Row -->
+              <div class="summary-row" id="editInvDiscountRow" style="display: none;">
+                <div class="summary-label">
+                  <i data-lucide="tag" style="width: 16px; height: 16px; color: var(--color-danger);"></i>
+                  <span>Potongan Diskon:</span>
+                </div>
+                <span id="editInvDiscountLabel" class="discount-amount-label" style="font-weight: 700; color: var(--color-danger); font-size: 0.95rem; width: 185px; justify-content: flex-end; text-align: right; display: inline-flex;">- Rp 0</span>
+              </div>
+
+              <!-- Grand Total Row -->
+              <div class="summary-row grand-total-row">
+                <div class="summary-label grand-total-label">
+                  <i data-lucide="receipt" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+                  <span>Grand Total:</span>
+                </div>
+                <strong id="editInvGrandTotal" class="grand-total-value">Rp 0</strong>
+              </div>
+
+              <!-- Uang Muka (DP) Row -->
+              <div class="summary-row">
+                <div class="summary-label">
+                  <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                  <span>Uang Muka (DP) / Dibayar:</span>
+                </div>
+                <div class="summary-value">
+                  <div class="currency-input-wrapper">
+                    <span class="currency-prefix">Rp</span>
+                    <input type="number" id="editInvPaidAmount" value="0" min="0" class="currency-field" required>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sisa Tagihan Row -->
+              <div class="summary-row">
+                <div class="summary-label">
+                  <i data-lucide="coins" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                  <span>Sisa Tagihan:</span>
+                </div>
+                <span id="editInvRemainingBalance" class="remaining-balance-value paid-none">Rp 0</span>
               </div>
             </div>
-
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; margin-top: 4px;">
-              <span style="font-size: 13px; font-weight: 600;">Grand Total:</span>
-              <span id="editInvGrandTotal" style="font-size: 15px; font-weight: 700; color: var(--color-primary);">Rp 0</span>
+            
+            <div class="form-actions mt-6" style="display: flex; gap: 12px; align-items: center; justify-content: flex-end; max-width: 440px; margin-left: auto;">
+              <button type="button" class="btn btn-secondary" onclick="app.closeModal('editInvoiceModal')" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;"><i data-lucide="x"></i> Batal</button>
+              <button type="button" class="btn btn-warning" onclick="app.saveEditedInvoice(event, 'Draft')" style="background: rgba(212, 175, 55, 0.15); border: 1px solid var(--color-primary); color: var(--color-primary);"><i data-lucide="file-text"></i> Draft</button>
+              <button type="submit" class="btn btn-success"><i data-lucide="save"></i> Simpan Perubahan</button>
             </div>
           </div>
-          
-          <button type="submit" class="btn btn-primary btn-block">Simpan Perubahan</button>
         </form>
       </div>
     </div>
@@ -848,6 +1065,10 @@
             <label>Tanggal Acara / Meeting <span style="color: var(--color-danger);">*</span></label>
             <input type="date" id="scheduleDate" required>
           </div>
+          <div class="form-group" id="scheduleTimeGroup" style="display: none;">
+            <label>Jam Meeting <span style="color: var(--color-danger);">*</span></label>
+            <input type="time" id="scheduleTime">
+          </div>
           <div class="form-group">
             <label>Lokasi</label>
             <input type="text" id="scheduleLocation" placeholder="Alamat lokasi">
@@ -856,8 +1077,10 @@
             <label>Catatan</label>
             <textarea id="scheduleNotes" rows="3" placeholder="Tambahkan rincian khusus jika ada..."></textarea>
           </div>
-          <div class="form-actions mt-4">
-            <button type="submit" class="btn btn-primary btn-block">Simpan Jadwal</button>
+          <div class="form-actions mt-4" style="display: flex; gap: 12px;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('addScheduleModal')" style="flex: 1;"><i data-lucide="x"></i> Batal</button>
+            <button type="button" class="btn btn-warning" onclick="app.saveSchedule(event, 'Draft')" style="flex: 1;"><i data-lucide="file-text"></i> Draft</button>
+            <button type="submit" class="btn btn-primary" style="flex: 1;"><i data-lucide="save"></i> Simpan Jadwal</button>
           </div>
         </form>
       </div>
@@ -895,7 +1118,11 @@
             </div>
           </div>
           
-          <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1.5rem; height: 42px; font-weight: 600;"><i data-lucide="save"></i> Simpan Perubahan</button>
+          <div class="form-actions mt-4" style="display: flex; gap: 12px; margin-top: 1.5rem;">
+            <button type="button" class="btn btn-secondary" onclick="app.closeModal('profileModal')" style="flex: 1; height: 42px; font-weight: 600;"><i data-lucide="x"></i> Batal</button>
+            <button type="button" class="btn btn-warning" onclick="app.saveProfile(event, true)" style="flex: 1; height: 42px; font-weight: 600;"><i data-lucide="file-text"></i> Draft</button>
+            <button type="submit" class="btn btn-primary" style="flex: 1; height: 42px; font-weight: 600;"><i data-lucide="save"></i> Simpan Perubahan</button>
+          </div>
           
           <div style="margin: 1rem 0; height: 1px; background: var(--color-border);"></div>
           
@@ -991,14 +1218,13 @@
         
         <!-- Menu list check boxes and quantities -->
         <div class="table-responsive" style="min-height: 250px; max-height: 400px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 15px;">
-          <table class="table table-bordered invoice-items-table" style="margin-bottom: 0;">
+          <table class="table table-bordered" style="margin-bottom: 0; table-layout: fixed; width: 100%;">
             <thead>
               <tr style="background: rgba(212, 175, 55, 0.05);">
-                <th style="width: 50px; text-align: center; vertical-align: middle;">Pilih</th>
-                <th style="vertical-align: middle;">Nama Menu</th>
+                <th style="width: 40px !important; max-width: 40px; text-align: center; vertical-align: middle; padding: 8px 4px !important;">✓</th>
+                <th style="vertical-align: middle; text-align: left;">Nama Menu</th>
                 <th style="text-align: right; vertical-align: middle;">Harga</th>
                 <th style="text-align: center; vertical-align: middle;">Unit</th>
-                <th style="width: 100px; text-align: center; vertical-align: middle;">Qty</th>
               </tr>
             </thead>
             <tbody id="menuModalList">
@@ -1147,7 +1373,6 @@
     </div>
   </div>
 
-  <script defer src="app.js"></script>
+  <script src="app.js?v=20260522_v6"></script>
 </body>
 </html>
-

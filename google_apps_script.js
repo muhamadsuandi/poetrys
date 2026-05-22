@@ -82,9 +82,18 @@ function syncToCalendar(sheetName, payload, oldEventId) {
       return oldEventId;
     }
 
-    const parts = dateStr.split('-');
-    if (parts.length !== 3) return oldEventId;
-    const eventDate = new Date(parts[0], parseInt(parts[1])-1, parts[2]);
+    let eventDate;
+    let isAllDay = true;
+    if (dateStr.includes('T') && dateStr.includes(':')) {
+      eventDate = new Date(dateStr);
+      isAllDay = false;
+    } else {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        eventDate = new Date(parts[0], parseInt(parts[1])-1, parts[2]);
+      }
+    }
+    if (!eventDate || isNaN(eventDate.getTime())) return oldEventId;
     let event;
 
     if (oldEventId) {
@@ -92,14 +101,24 @@ function syncToCalendar(sheetName, payload, oldEventId) {
         event = calendar.getEventById(oldEventId);
         if (event) {
           event.setTitle(title);
-          event.setAllDayDate(eventDate);
+          if (isAllDay) {
+            event.setAllDayDate(eventDate);
+          } else {
+            const endTime = new Date(eventDate.getTime() + 60 * 60 * 1000);
+            event.setTime(eventDate, endTime);
+          }
           event.setDescription(desc);
           return oldEventId;
         }
       } catch(e) {}
     }
 
-    event = calendar.createAllDayEvent(title, eventDate, {description: desc});
+    if (isAllDay) {
+      event = calendar.createAllDayEvent(title, eventDate, {description: desc});
+    } else {
+      const endTime = new Date(eventDate.getTime() + 60 * 60 * 1000);
+      event = calendar.createEvent(title, eventDate, endTime, {description: desc});
+    }
     return event.getId();
 
   } catch(e) {
@@ -134,6 +153,19 @@ function handleResponse(e) {
       const username = payload.username;
       const passwordHash = payload.password; // Expected to be hashed from frontend
       
+      // Bootstrapped local superadmin check
+      if (username === "superadmin" && passwordHash === "e34f92a20532a873cb3184398070b4b82a8fa29cf48572c203dc5f0fa6158231") {
+        const userObj = {
+          id: "superadmin_bootstrapped",
+          username: "superadmin",
+          role: "super admin",
+          name: "Super Admin"
+        };
+        const token = generateToken(userObj);
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", token: token, user: userObj }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
       const sheet = doc.getSheetByName("Users");
       if (!sheet) throw new Error("Users sheet not found");
       const data = sheet.getDataRange().getValues();
@@ -183,7 +215,7 @@ function handleResponse(e) {
 
     if (action === "GET_INIT_DATA") {
       const sheetsToFetch = ["Menus", "Invoices", "Schedules"];
-      if (user.r === 'admin') sheetsToFetch.push("Users"); // Only admin gets Users data
+      if (user.r === 'super admin') sheetsToFetch.push("Users"); // Only super admin gets Users data
       
       const resultData = {};
 
@@ -217,7 +249,7 @@ function handleResponse(e) {
 
     if (action === "GET_ALL") {
       const sheetName = e.parameter.sheet;
-      if (sheetName === "Users" && user.r !== 'admin') {
+      if (sheetName === "Users" && user.r !== 'super admin') {
         throw new Error("Unauthorized to access Users");
       }
       
@@ -245,7 +277,7 @@ function handleResponse(e) {
 
     if (action === "ADD_ROW") {
       const sheetName = e.parameter.sheet;
-      if (sheetName === "Users" && user.r !== 'admin') throw new Error("Unauthorized");
+      if (sheetName === "Users" && user.r !== 'super admin') throw new Error("Unauthorized");
       
       const sheet = doc.getSheetByName(sheetName);
       if (!sheet) throw new Error("Sheet not found");
@@ -275,7 +307,7 @@ function handleResponse(e) {
 
     if (action === "DELETE_ROW") {
       const sheetName = e.parameter.sheet;
-      if (sheetName === "Users" && user.r !== 'admin') throw new Error("Unauthorized");
+      if (sheetName === "Users" && user.r !== 'super admin') throw new Error("Unauthorized");
       
       const sheet = doc.getSheetByName(sheetName);
       if (!sheet) throw new Error("Sheet not found");
@@ -305,8 +337,8 @@ function handleResponse(e) {
       const sheetName = e.parameter.sheet;
       const payload = JSON.parse(e.postData.contents);
       
-      // Only admin can update Users, UNLESS user is updating their own profile
-      if (sheetName === "Users" && user.r !== 'admin') {
+      // Only super admin can update Users, UNLESS user is updating their own profile
+      if (sheetName === "Users" && user.r !== 'super admin') {
          // Check if user is updating their own profile
          if (payload.username !== user.u) throw new Error("Unauthorized to update other users");
       }
