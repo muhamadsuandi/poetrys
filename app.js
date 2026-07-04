@@ -1,4 +1,12 @@
 // app.js
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+  alert('TERTANGKAP ERROR!\nPesan: ' + msg + '\nBaris: ' + lineNo + '\nKolom: ' + columnNo);
+  return false;
+};
+window.onunhandledrejection = function(event) {
+  alert('TERTANGKAP PROMISE ERROR!\nPesan: ' + (event.reason ? event.reason.message || event.reason : 'Unknown Error'));
+};
+
 const app = {
   // === CONFIGURATION DATABASE ===
   // Ganti URL di bawah ini dengan URL Web App Google Sheets Anda agar otomatis terhubung untuk semua orang!
@@ -437,10 +445,56 @@ const app = {
     }
   },
 
-  showLoading(show) {
+  loadingInterval: null,
+  loadingProgress: 0,
+
+  showLoading(show, text = 'Memuat...') {
     const el = document.getElementById('loadingOverlay');
-    if (show) el.classList.remove('hidden');
-    else el.classList.add('hidden');
+    const textEl = document.getElementById('loadingText');
+    const progressText = document.getElementById('loadingProgressText');
+    const progressBar = document.getElementById('loadingProgressBarInner');
+    
+    if (!el || !textEl) return;
+
+    if (show) {
+      textEl.textContent = text;
+      el.classList.remove('hidden');
+      
+      this.loadingProgress = 0;
+      if (progressText) progressText.textContent = '0%';
+      if (progressBar) {
+        progressBar.style.transition = 'none'; // reset smoothly
+        progressBar.style.width = '0%';
+        void progressBar.offsetWidth; // force browser reflow
+        progressBar.style.transition = 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+      }
+      
+      if (this.loadingInterval) clearInterval(this.loadingInterval);
+      
+      // Simulate realistic loading progress
+      this.loadingInterval = setInterval(() => {
+        const remaining = 95 - this.loadingProgress;
+        const step = Math.max(0.5, remaining * 0.15 * Math.random());
+        this.loadingProgress += step;
+        if (this.loadingProgress >= 95) this.loadingProgress = 95;
+        
+        if (progressText) progressText.textContent = Math.floor(this.loadingProgress) + '%';
+        if (progressBar) progressBar.style.width = this.loadingProgress + '%';
+      }, 150);
+      
+    } else {
+      if (this.loadingInterval) clearInterval(this.loadingInterval);
+      if (el.classList.contains('hidden')) return;
+      
+      // Snap to 100%
+      if (progressText) progressText.textContent = '100%';
+      if (progressBar) progressBar.style.width = '100%';
+      
+      // Give the user 350ms to read "100%" visually before fading out
+      setTimeout(() => {
+        el.classList.add('hidden');
+      }, 350);
+    }
   },
 
   async refreshData() {
@@ -527,6 +581,7 @@ const app = {
       if (this.data.apiUrl) {
         const res = await fetch(`${this.data.apiUrl}?action=LOGIN`, {
           method: 'POST',
+          credentials: 'omit',
           body: JSON.stringify({ username, password: passwordHash })
         });
         const json = await res.json();
@@ -681,7 +736,7 @@ const app = {
     } else {
       // Load from Google Sheets
       try {
-        const res = await fetch(`${this.data.apiUrl}?action=GET_INIT_DATA&token=${localStorage.getItem('sessionToken') || ''}`);
+        const res = await fetch(`${this.data.apiUrl}?action=GET_INIT_DATA&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
         const json = await res.json();
         
         if (json.status === 'success' && json.data) {
@@ -715,6 +770,8 @@ const app = {
       } catch (e) {
         console.error("Error loading data", e);
         this.showAlert(`Gagal memuat data dari API Database: ${e.message}\nSilakan periksa URL Web App Google Sheets Anda di menu Settings.`, "error");
+        if (!quiet) this.showLoading(false);
+        throw e; // Lemparkan error agar fungsi pemanggil (seperti refreshData) tahu ini gagal!
       }
     }
     
@@ -733,7 +790,7 @@ const app = {
   async fetchData(sheet) {
     if(!this.data.apiUrl) return [];
     try {
-      const res = await fetch(`${this.data.apiUrl}?action=GET_ALL&sheet=${sheet}&token=${localStorage.getItem('sessionToken') || ''}`);
+      const res = await fetch(`${this.data.apiUrl}?action=GET_ALL&sheet=${sheet}&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
       const json = await res.json();
       if(json.status === 'success') return json.data;
       return [];
@@ -755,7 +812,7 @@ const app = {
     } else {
       // Save API
       try {
-        await fetch(`${this.data.apiUrl}?action=ADD_ROW&sheet=${sheet}`, { method: 'POST', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
+        await fetch(`${this.data.apiUrl}?action=ADD_ROW&sheet=${sheet}`, { method: 'POST', credentials: 'omit', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
         await this.loadData();
       } catch(e) {
         this.showAlert("Failed to save to database", "error");
@@ -778,7 +835,7 @@ const app = {
       }
     } else {
       try {
-        await fetch(`${this.data.apiUrl}?action=UPDATE_ROW&sheet=${sheet}`, { method: 'POST', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
+        await fetch(`${this.data.apiUrl}?action=UPDATE_ROW&sheet=${sheet}`, { method: 'POST', credentials: 'omit', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
         await this.loadData();
       } catch(e) {
         this.showAlert("Failed to update database", "error");
@@ -798,7 +855,7 @@ const app = {
       this.updateNotifications();
     } else {
       try {
-        await fetch(`${this.data.apiUrl}?action=DELETE_ROW&sheet=${sheet}&id=${id}&token=${localStorage.getItem('sessionToken') || ''}`);
+        await fetch(`${this.data.apiUrl}?action=DELETE_ROW&sheet=${sheet}&id=${id}&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
         await this.loadData();
       } catch(e) {
         this.showAlert("Failed to delete from database", "error");
@@ -827,6 +884,43 @@ const app = {
     
     document.getElementById('statTotalPaidRevenue').textContent = this.formatCurrency(paidRevenue);
     document.getElementById('statTotalUnpaidRevenue').textContent = this.formatCurrency(unpaidRevenue);
+
+    // Populate Glassmorphism Tooltips
+    const tpPaidInv = document.getElementById('tooltipPaidInvoices');
+    if (tpPaidInv) {
+      if (paidInvoices.length === 0) {
+        tpPaidInv.innerHTML = '<em style="color: var(--color-text-muted);">Belum ada data pelunasan.</em>';
+      } else {
+        const sortedPaid = [...paidInvoices].sort((a,b) => new Date(b.dateCreated) - new Date(a.dateCreated));
+        const list = sortedPaid.slice(0, 5).map(i => `<div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 4px;"><span>• ${i.invoiceNumber}</span><strong style="color: var(--color-success);">${i.customerName.split(' ')[0]}</strong></div>`).join('');
+        tpPaidInv.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">5 Invoice Lunas Terbaru</div>${list}${paidInvoices.length > 5 ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-primary); font-weight: 600;">+ ${paidInvoices.length - 5} invoice lunas lainnya</div>` : ''}`;
+      }
+    }
+    
+    const tpPaidRev = document.getElementById('tooltipPaidRevenue');
+    if (tpPaidRev) {
+      tpPaidRev.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Revenue Terkumpul</div><div style="color: var(--color-text-muted);">Total pendapatan uang nyata yang telah masuk ke kas dari <strong style="color: #fff;">${paidInvoices.length} Lunas</strong> dan DP dari <strong style="color: #fff;">${unpaidInvoices.filter(i => Number(i.paidAmount) > 0).length} Belum Lunas</strong>.</div>`;
+    }
+
+    const tpUnpaidInv = document.getElementById('tooltipUnpaidInvoices');
+    if (tpUnpaidInv) {
+      if (unpaidInvoices.length === 0) {
+        tpUnpaidInv.innerHTML = '<em style="color: var(--color-text-muted);">Luar biasa, semua invoice lunas!</em>';
+      } else {
+        const sortedUnpaid = [...unpaidInvoices].sort((a,b) => new Date(a.cateringDate) - new Date(b.cateringDate));
+        const list = sortedUnpaid.slice(0, 5).map(i => {
+          const p = Number(i.paidAmount) || 0;
+          const r = Number(i.totalAmount) - p;
+          return `<div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 4px;"><span>• ${i.invoiceNumber}</span><strong style="color: var(--color-danger);">- ${this.formatCurrency(r)}</strong></div>`;
+        }).join('');
+        tpUnpaidInv.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Detail Tagihan (Top 5)</div>${list}${unpaidInvoices.length > 5 ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-danger); font-weight: 600;">+ ${unpaidInvoices.length - 5} invoice lain mengantre</div>` : ''}`;
+      }
+    }
+
+    const tpUnpaidRev = document.getElementById('tooltipUnpaidRevenue');
+    if (tpUnpaidRev) {
+      tpUnpaidRev.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Potensi Pendapatan</div><div style="color: var(--color-text-muted);">Total tagihan yang belum tertagih dari <strong style="color: #fff;">${unpaidInvoices.length} transaksi aktif</strong>. Sisa pembayaran ini diharapkan segera masuk ke kas Anda.</div>`;
+    }
 
     // Nearest Schedules Table
     const table = document.getElementById('nearestSchedulesTable');
@@ -2903,6 +2997,8 @@ const app = {
       
       // Dot indicator under day number
       let dotHtml = '';
+      let tooltipHtml = '';
+      
       if (hasAny) {
         dotHtml += `<div style="position: absolute; bottom: 3px; left: 0; right: 0; display: flex; justify-content: center; gap: 3px;">`;
         if (hasInvoice) {
@@ -2915,12 +3011,39 @@ const app = {
           dotHtml += `<span style="width: 5px; height: 5px; background: #8b5cf6; border-radius: 50%;"></span>`;
         }
         dotHtml += `</div>`;
+        
+        // Construct Tooltip
+        let tooltipContent = `<div style="margin-bottom: 5px; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">${this.formatDate(dateStr)}</div>`;
+        if (hasInvoice) {
+          tooltipContent += `<div style="font-size: 11px; margin-bottom: 3px;"><span style="color: var(--color-primary)">•</span> ${dayData.invoices.length} Katering</div>`;
+        }
+        if (hasBooking) {
+          tooltipContent += `<div style="font-size: 11px; margin-bottom: 3px;"><span style="color: #38bdf8">•</span> ${dayData.schedules.filter(s => !s.type || s.type === 'Booking').length} Booking Umum</div>`;
+        }
+        if (hasMeeting) {
+          tooltipContent += `<div style="font-size: 11px; margin-bottom: 3px;"><span style="color: #8b5cf6">•</span> ${dayData.schedules.filter(s => s.type === 'Meeting').length} Meeting</div>`;
+        }
+        
+        let eventNames = [];
+        dayData.invoices.forEach(inv => eventNames.push(this.escapeHTML(inv.customerName || 'Customer')));
+        dayData.schedules.forEach(s => eventNames.push(this.escapeHTML(s.title || 'Event')));
+        
+        if (eventNames.length > 0) {
+          tooltipContent += `<div style="font-size: 11px; color: var(--color-text-muted); margin-top: 5px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 5px;">`;
+          tooltipContent += eventNames.slice(0, 3).join(', ');
+          if (eventNames.length > 3) tooltipContent += `, dkk (+${eventNames.length - 3})`;
+          tooltipContent += `</div>`;
+        }
+        
+        tooltipHtml = `<div class="tooltip-content" style="width: max-content; min-width: 150px; text-align: left; z-index: 9999;">${tooltipContent}</div>`;
+        dayClass += ' tooltip-host';
       }
       
       daysContainer.innerHTML += `
         <div class="${dayClass}" style="${style}" onclick="app.selectCalendarDate('${dateStr}')">
           ${day}
           ${dotHtml}
+          ${tooltipHtml}
         </div>
       `;
     }
@@ -3705,6 +3828,34 @@ const app = {
     lucide.createIcons();
   },
 
+  animateValue(obj, start, end, duration, formatCurrency = false) {
+    if (!obj) return;
+    let startTimestamp = null;
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+      const current = Math.floor(start + (end - start) * easeOutQuart);
+      
+      if (formatCurrency) {
+        obj.textContent = this.formatCurrency(current).replace('Rp ', '');
+      } else {
+        obj.textContent = current;
+      }
+      
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        if (formatCurrency) {
+          obj.textContent = this.formatCurrency(end).replace('Rp ', '');
+        } else {
+          obj.textContent = end;
+        }
+      }
+    };
+    window.requestAnimationFrame(step);
+  },
+
   renderReports() {
     const filteredInvoices = this.data.invoices.filter(inv => {
       if (!inv.cateringDate) return false;
@@ -3794,6 +3945,75 @@ const app = {
           <td style="text-align: right; color: var(--color-success);">${this.formatCurrency(grandTotalPaid)}</td>
           <td style="text-align: right; color: ${grandTotalRemaining > 0 ? 'var(--color-danger)' : 'inherit'};">${this.formatCurrency(grandTotalRemaining)}</td>
         `;
+      }
+      
+      // Update Hero Section
+      const heroRevenueAmount = document.getElementById('heroRevenueAmount');
+      const heroTotalInvoices = document.getElementById('heroTotalInvoices');
+      const heroAvgRevenue = document.getElementById('heroAvgRevenue');
+      const heroRevenueTitle = document.getElementById('heroRevenueTitle');
+      
+      if (heroRevenueAmount) {
+        if (this.reportState.filterType === 'year') {
+          heroRevenueTitle.textContent = `Total Omset Tahun ${this.reportState.selectedYear}`;
+        } else {
+          heroRevenueTitle.textContent = `Total Omset (Filter Khusus)`;
+        }
+        
+        this.animateValue(heroRevenueAmount, 0, grandTotalAmount, 1500, true);
+        
+        if (heroTotalInvoices) {
+          this.animateValue(heroTotalInvoices, 0, grandTotalCount, 1500, false);
+        }
+        
+        if (heroAvgRevenue) {
+          const avg = sortedMonths.length > 0 ? Math.floor(grandTotalAmount / sortedMonths.length) : 0;
+          const formattedAvgStr = this.formatCurrency(avg);
+          heroAvgRevenue.innerHTML = `<span style="font-size: 14px; color: var(--color-success); margin-right: 4px;">Rp</span>${formattedAvgStr.replace('Rp ', '')}`;
+        }
+      }
+      // === Render Client Rating ===
+      const clientMap = {};
+      filteredInvoices.forEach(inv => {
+        const name = (inv.customerName || 'Customer Tidak Diketahui').trim();
+        if (!clientMap[name]) {
+          clientMap[name] = { name: name, eventCount: 0, totalAmount: 0, totalRemaining: 0 };
+        }
+        
+        const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+        const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+        
+        clientMap[name].eventCount += 1;
+        clientMap[name].totalAmount += Number(inv.totalAmount);
+        clientMap[name].totalRemaining += remaining;
+      });
+      
+      const sortedClients = Object.values(clientMap).sort((a, b) => b.totalAmount - a.totalAmount);
+      
+      const clientTbody = document.getElementById('clientRatingTableBody');
+      if (clientTbody) {
+        clientTbody.innerHTML = '';
+        if (sortedClients.length === 0) {
+          clientTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 40px; color: var(--color-text-muted);">Belum ada data kustomer.</td></tr>`;
+        } else {
+          sortedClients.forEach((client, idx) => {
+            let rankHtml = `<strong>${idx + 1}</strong>`;
+            if (idx === 0) rankHtml = `<i data-lucide="award" style="color: #fbbf24; width: 20px;"></i>`;
+            else if (idx === 1) rankHtml = `<i data-lucide="award" style="color: #94a3b8; width: 20px;"></i>`;
+            else if (idx === 2) rankHtml = `<i data-lucide="award" style="color: #b45309; width: 20px;"></i>`;
+            
+            clientTbody.innerHTML += `
+              <tr class="interactive-table-row">
+                <td style="text-align: center;">${rankHtml}</td>
+                <td><strong style="color: var(--color-primary)">${this.escapeHTML(client.name)}</strong></td>
+                <td style="text-align: center;">${client.eventCount}</td>
+                <td style="text-align: right; font-weight: bold;">${this.formatCurrency(client.totalAmount)}</td>
+                <td style="text-align: right; color: ${client.totalRemaining > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)'};">${this.formatCurrency(client.totalRemaining)}</td>
+              </tr>
+            `;
+          });
+        }
+        lucide.createIcons();
       }
     }
 
@@ -4050,7 +4270,10 @@ const app = {
 
   // === Settings ===
   saveSettings() {
-    const url = document.getElementById('settingApiUrl').value.trim();
+    let url = document.getElementById('settingApiUrl').value.trim();
+    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
     localStorage.setItem('apiUrl', url);
     this.data.apiUrl = url;
     this.showAlert("Pengaturan disimpan! Memuat ulang data...", "success");

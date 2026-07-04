@@ -261,12 +261,21 @@ body.light-theme .password-toggle-btn:hover {
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 17, 21, 0.9);
+  background: rgba(15, 17, 21, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 9999;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+.loading-overlay.hidden {
+  display: flex !important;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 .spinner {
   width: 40px;
@@ -474,6 +483,56 @@ body.light-theme .password-toggle-btn:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 20px -10px rgba(0, 0, 0, 0.5), 0 0 15px 0 rgba(212, 175, 55, 0.15);
   border-color: rgba(212, 175, 55, 0.25);
+}
+.tooltip-host {
+  position: relative;
+}
+.tooltip-host:hover {
+  z-index: 9999;
+}
+.tooltip-content {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(5px) scale(0.95);
+  background: rgba(15, 17, 21, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #f8fafc;
+  padding: 14px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  width: max-content;
+  max-width: 320px;
+  box-shadow: 0 15px 35px -5px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-top: 1px solid rgba(255,255,255,0.1);
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+  pointer-events: none;
+  text-align: left;
+}
+.tooltip-host:hover .tooltip-content {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(15px) scale(1);
+}
+.hero-stat-card {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hero-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 30px -10px rgba(212, 175, 55, 0.2);
+}
+.hero-glow {
+  transition: opacity 0.5s ease;
+  opacity: 0.6;
+}
+.hero-stat-card:hover .hero-glow {
+  opacity: 1;
 }
 .stat-icon {
   width: 48px;
@@ -3006,3 +3065,108 @@ body.light-theme .autocomplete-suggestion-item {
 
 
 
+
+/* Hero Section Styles */
+.hero-stat-card {
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 220px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.hero-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 30px -10px rgba(212, 175, 55, 0.2);
+}
+.hero-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, rgba(16, 185, 129, 0.15) 0%, rgba(212, 175, 55, 0.05) 50%, transparent 80%);
+  z-index: 1;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+  opacity: 0.6;
+}
+.hero-stat-card:hover .hero-glow {
+  opacity: 1;
+}
+.hero-revenue-title {
+  color: var(--color-primary);
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+  position: relative;
+  z-index: 2;
+}
+.hero-revenue-amount-container {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 20px;
+  text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 8px;
+}
+.hero-revenue-currency {
+  font-size: clamp(24px, 3vw, 32px);
+  color: var(--color-success);
+}
+.hero-stats-container {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
+}
+.hero-mini-stat {
+  background: rgba(0,0,0,0.3);
+  padding: 10px 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+  min-width: 140px;
+}
+.hero-mini-stat-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.hero-mini-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Light Theme Overrides for Hero Section */
+body.light-theme .hero-stat-card {
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+body.light-theme .hero-revenue-amount-container {
+  color: #0f172a;
+  text-shadow: 0 4px 15px rgba(0,0,0,0.05);
+}
+body.light-theme .hero-mini-stat {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(0,0,0,0.05);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+}
+body.light-theme .hero-mini-stat-value {
+  color: #0f172a;
+}
