@@ -414,16 +414,29 @@ body.light-theme .password-toggle-btn:hover {
 }
 .view.active {
   display: block;
-  animation: slideFadeIn 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: slideFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.view.active.exiting {
+  animation: slideFadeOut 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 @keyframes slideFadeIn {
   from {
     opacity: 0;
-    transform: translateY(16px) scale(0.985);
+    transform: translateY(8px) scale(0.995);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+@keyframes slideFadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.995);
   }
 }
 
@@ -2563,135 +2576,7 @@ body.light-theme .grand-total-row {
   }
 }
 
-/* Premium Solid White Modal Styling Override */
-.white-invoice-modal {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
-}
-
-.white-invoice-modal .modal-header {
-  background: #f8fafc !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-}
-
-.white-invoice-modal .modal-header h2 {
-  color: #0f172a !important;
-}
-
-.white-invoice-modal .modal-header .btn-icon {
-  background: #f1f5f9 !important;
-  color: #64748b !important;
-}
-
-.white-invoice-modal .modal-header .btn-icon:hover {
-  background: #e2e8f0 !important;
-  color: #0f172a !important;
-}
-
-.white-invoice-modal h3,
-.white-invoice-modal h4,
-.white-invoice-modal label,
-.white-invoice-modal span,
-.white-invoice-modal td,
-.white-invoice-modal th,
-.white-invoice-modal strong,
-.white-invoice-modal small {
-  color: #0f172a !important;
-}
-
-.white-invoice-modal .text-muted {
-  color: #64748b !important;
-}
-
-.white-invoice-modal input[type="text"],
-.white-invoice-modal input[type="number"],
-.white-invoice-modal input[type="date"],
-.white-invoice-modal select,
-.white-invoice-modal textarea {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: 1px solid #cbd5e1 !important;
-}
-
-.white-invoice-modal input[type="text"]:focus,
-.white-invoice-modal input[type="number"]:focus,
-.white-invoice-modal input[type="date"]:focus,
-.white-invoice-modal select:focus,
-.white-invoice-modal textarea:focus {
-  border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2) !important;
-}
-
-.white-invoice-modal .invoice-summary-card {
-  background: #f8fafc !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05) !important;
-}
-
-.white-invoice-modal .summary-row::before {
-  border-bottom: 1px dashed rgba(15, 23, 42, 0.15) !important;
-}
-
-.white-invoice-modal .discount-input-group,
-.white-invoice-modal .currency-input-wrapper {
-  background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-}
-
-.white-invoice-modal .discount-select,
-.white-invoice-modal .discount-input,
-.white-invoice-modal .currency-field {
-  color: #0f172a !important;
-}
-
-.white-invoice-modal .currency-prefix {
-  background: #f1f5f9 !important;
-  border-right: 1px solid #cbd5e1 !important;
-  color: #475569 !important;
-}
-
-.white-invoice-modal .grand-total-row {
-  background: rgba(212, 175, 55, 0.08) !important;
-}
-
-.white-invoice-modal .grand-total-row:hover {
-  background: rgba(212, 175, 55, 0.12) !important;
-}
-
-.white-invoice-modal .remaining-balance-value.paid-none {
-  color: #ef4444 !important;
-  background: rgba(239, 68, 68, 0.08) !important;
-  border-color: rgba(239, 68, 68, 0.15) !important;
-}
-
-.white-invoice-modal .remaining-balance-value.paid-full {
-  color: #10b981 !important;
-  background: rgba(16, 185, 129, 0.08) !important;
-  border-color: rgba(16, 185, 129, 0.15) !important;
-}
-
-.white-invoice-modal .remaining-balance-value.paid-partial {
-  color: var(--color-primary) !important;
-  background: rgba(212, 175, 55, 0.08) !important;
-  border-color: rgba(212, 175, 55, 0.15) !important;
-}
-
-.white-invoice-modal .invoice-items-table th {
-  background: #f1f5f9 !important;
-  color: #0f172a !important;
-  border-color: #cbd5e1 !important;
-}
-
-.white-invoice-modal .invoice-items-table td {
-  border-color: #cbd5e1 !important;
-}
-
-.white-invoice-modal .invoice-section-box {
-  background: #f8fafc !important;
-  border: 1px solid #cbd5e1 !important;
-}
+/* Edit Invoice Modal styles deleted to inherit global dark/light theme styling */
 
 /* Fixed column widths to prevent shifts up to Rp 999.999.999 */
 .invoice-items-table {
@@ -2798,6 +2683,324 @@ body.light-theme .grand-total-row {
   .currency-input-wrapper {
     width: 160px !important;
     min-width: 160px !important;
+  }
+}
+
+/* Notification System */
+.navbar-notification-wrapper {
+  position: relative;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--color-danger);
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-bg);
+  z-index: 10;
+}
+
+body.light-theme .notification-badge {
+  border-color: var(--color-bg);
+}
+
+.notification-dropdown {
+  position: absolute;
+  right: 0;
+  top: 46px;
+  width: 340px;
+  max-height: 400px;
+  z-index: 1000;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5), 0 8px 16px -6px rgba(0,0,0,0.3);
+  padding: 12px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  /* Solid background (non-transparent override for .glass) */
+  background: #1a1d24 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+
+  /* Smooth in-out transitions */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              visibility 0.2s;
+}
+
+.notification-dropdown.active {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+body.light-theme .notification-dropdown {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(2px);
+}
+
+body.light-theme .notification-item {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .notification-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.notification-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--color-danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notification-item-icon.warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.notification-item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.notification-item-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.notification-item-date {
+  font-size: 10px;
+  color: var(--color-danger);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.notification-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+  gap: 8px;
+}
+
+/* Specificity overrides for hidden elements */
+.hidden,
+.nav-tab.hidden,
+.admin-only.hidden,
+.super-admin-only.hidden {
+  display: none !important;
+}
+
+/* Interactive Table Row Hover Effects */
+.interactive-table-row {
+  cursor: pointer;
+  transition: background 0.15s ease !important;
+}
+
+.interactive-table-row:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+body.light-theme .interactive-table-row:hover {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Autocomplete Suggestions Dropdown */
+.search-input-wrapper {
+  position: relative;
+}
+
+.autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 5000;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  margin-top: 4px;
+}
+
+body.light-theme .autocomplete-suggestions {
+  background: #ffffff;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.autocomplete-suggestion-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s ease;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+body.light-theme .autocomplete-suggestion-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.autocomplete-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-suggestion-item:hover {
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--color-primary);
+}
+
+.autocomplete-suggestion-name {
+  font-weight: 500;
+}
+
+.autocomplete-suggestion-price {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Print Media Styling (Native Browser Print Support)
+   ========================================================================== */
+@media print {
+  /* Set light print mode background */
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt !important;
+  }
+
+  /* Hide everything except the print template wrapper */
+  #appLayout,
+  .modal-backdrop:not(#pdfTemplateWrapper),
+  .modal-header,
+  .btn,
+  button,
+  .spinner,
+  #detailLoadingOverlay,
+  #loadingOverlay {
+    display: none !important;
+  }
+
+  /* Strip modal styles for a clean layout */
+  #pdfTemplateWrapper {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    z-index: auto !important;
+  }
+
+  #pdfTemplateWrapper .modal {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+
+  #pdfTemplateWrapper .modal-body {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  #pdfContent {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    display: block !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Keep status watermark printed nicely in light mode */
+  #pdfStatusWatermark {
+    color: rgba(239, 68, 68, 0.15) !important;
+    border-color: rgba(239, 68, 68, 0.15) !important;
+  }
+
+  /* Optimize images, logos, and QR codes for print rendering */
+  img {
+    max-width: 100% !important;
   }
 }
 

@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
   
   <!-- CSS -->
-  <link rel="stylesheet" href="style.css?v=20260522_v6">
+  <link rel="stylesheet" href="style.css?v=20260704_v29">
   
   <!-- Nav Active Override — inline to prevent cache issues -->
   <style>
@@ -34,8 +34,8 @@
   
   <!-- Libraries -->
   <script defer src="https://unpkg.com/lucide@latest"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -50,6 +50,17 @@
   <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="spinner"></div>
     <p>Loading...</p>
+  </div>
+
+  <!-- DETAIL PROGRESS LOADING OVERLAY -->
+  <div id="detailLoadingOverlay" class="loading-overlay hidden" style="background: rgba(15, 17, 21, 0.95);">
+    <div style="width: 280px; text-align: center;">
+      <div style="font-size: 24px; font-weight: 700; color: var(--color-primary); margin-bottom: 8px;" id="detailLoadingPercent">0%</div>
+      <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 12px;">
+        <div id="detailLoadingBar" style="width: 0%; height: 100%; background: var(--color-primary); transition: width 0.05s linear; border-radius: 3px;"></div>
+      </div>
+      <p style="margin: 0; font-size: 12px; color: var(--color-text-muted); font-weight: 500; letter-spacing: 0.5px;" id="detailLoadingText">Menyusun detail data...</p>
+    </div>
   </div>
 
   <!-- LOGIN PAGE -->
@@ -102,7 +113,7 @@
         <a href="#" data-page="menus" class="nav-tab nav-link admin-only" data-lang-key="masterMenu"><i data-lucide="utensils"></i> <span>Master Menu</span></a>
         <a href="#" data-page="users" class="nav-tab nav-link super-admin-only" data-lang-key="masterUser"><i data-lucide="users"></i> <span>Master User</span></a>
         <a href="#" data-page="reports" class="nav-tab nav-link admin-only" data-lang-key="reports"><i data-lucide="bar-chart-3"></i> <span>Reports</span></a>
-        <a href="#" data-page="settings" class="nav-tab nav-link" data-lang-key="settings"><i data-lucide="settings"></i> <span>Settings</span></a>
+        <a href="#" data-page="settings" class="nav-tab nav-link admin-only" data-lang-key="settings"><i data-lucide="settings"></i> <span>Settings</span></a>
       </nav>
 
       <!-- Right: User Info, Theme, Lang, Logout -->
@@ -120,6 +131,26 @@
         <div class="divider-vertical"></div>
 
         <button id="btnThemeToggle" class="btn btn-icon" onclick="app.toggleTheme()" title="Toggle Theme" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--color-primary); cursor: pointer;"><i data-lucide="sun"></i></button>
+
+        <div class="divider-vertical"></div>
+
+        <!-- NOTIFICATION ICON -->
+        <div class="navbar-notification-wrapper">
+          <button id="btnNotificationToggle" class="btn btn-icon" title="Notifikasi" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--color-primary); cursor: pointer; position: relative;">
+            <i data-lucide="bell"></i>
+            <span id="notificationBadge" class="notification-badge" style="display: none;">0</span>
+          </button>
+          <!-- Notification Dropdown -->
+          <div id="notificationDropdown" class="notification-dropdown glass">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--color-border); padding-bottom: 8px; margin-bottom: 4px;">
+              <h4 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--color-primary);">Tagihan Jatuh Tempo</h4>
+              <span id="notificationCountLabel" class="badge" style="background: rgba(239, 68, 68, 0.15); color: var(--color-danger); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;">0</span>
+            </div>
+            <div id="notificationList" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px 0;">
+              <!-- Notifications injected here -->
+            </div>
+          </div>
+        </div>
 
         <div class="divider-vertical"></div>
 
@@ -206,6 +237,23 @@
           </div>
           <div class="widget glass">
             <h3 data-lang-key="revenueOverview">Revenue Overview (Last 7 Days)</h3>
+            
+            <!-- Summary Stats for Year -->
+            <div class="chart-stats-summary" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 120px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 14px;">
+                <div style="font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Omset Tahun Ini</div>
+                <div id="chartStatOmset" style="font-size: 16px; font-weight: 700; color: var(--color-primary); margin-top: 4px;">Rp 0</div>
+              </div>
+              <div style="flex: 1; min-width: 120px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 14px;">
+                <div style="font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Invoice Terbayar</div>
+                <div id="chartStatTerbayar" style="font-size: 16px; font-weight: 700; color: var(--color-success); margin-top: 4px;">0 Invoice</div>
+              </div>
+              <div style="flex: 1; min-width: 120px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 14px;">
+                <div style="font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Belum Terbayar</div>
+                <div id="chartStatBelumTerbayar" style="font-size: 16px; font-weight: 700; color: var(--color-danger); margin-top: 4px;">0 Invoice</div>
+              </div>
+            </div>
+
             <div class="chart-container">
               <canvas id="dashboardChart"></canvas>
             </div>
@@ -413,8 +461,9 @@
                 <h3 style="margin-top: 0;">Select Menus</h3>
                 <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 15px;">
                   <div class="search-input-wrapper" style="flex: 1; position: relative;">
-                    <input type="text" id="invMenuSelect" readonly placeholder="Ketik / Klik untuk mencari menu..." onclick="app.openMenuSelection('create')" style="cursor: pointer; padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
-                    <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted); cursor: pointer;" onclick="app.openMenuSelection('create')"></i>
+                    <input type="text" id="invMenuSelect" placeholder="Ketik untuk mencari & memilih menu..." oninput="app.handleMenuAutocomplete(this, 'create')" onfocus="app.handleMenuAutocomplete(this, 'create')" style="padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
+                    <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted);"></i>
+                    <div id="invMenuSelectSuggestions" class="autocomplete-suggestions hidden"></div>
                   </div>
                   <button class="btn btn-primary" id="btnAddMenuItem" onclick="app.openMenuSelection('create')"><i data-lucide="plus"></i> Pilih Menu</button>
                 </div>
@@ -437,74 +486,100 @@
                   </table>
                 </div>
 
-                <!-- Summary: Subtotal, Diskon, Grand Total, Uang Muka & Sisa Tagihan -->
-                <div class="invoice-summary-card" style="margin-top: 24px;">
-                  <!-- Subtotal Row -->
-                  <div class="summary-row">
-                    <div class="summary-label">
-                      <i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                      <span>Subtotal:</span>
+                <!-- Summary Section with Notes (Left) and Pricing Card (Right) -->
+                <div style="display: flex; gap: 20px; align-items: stretch; margin-top: 24px; flex-wrap: wrap;">
+                  <!-- Left: Keterangan (Notes) -->
+                  <div class="glass" style="flex: 1; min-width: 280px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px; color: var(--color-primary); font-weight: 600;">
+                      <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
+                      <span>Keterangan Invoice (Catatan)</span>
                     </div>
-                    <span id="invSubtotal" class="summary-value">Rp 0</span>
+                    <textarea id="invNotes" placeholder="Tambahkan catatan khusus untuk katering ini (misal: request pedas, alergi, jam pengiriman, keterangan menu tambahan, dll)..." style="width: 100%; flex: 1; min-height: 140px; resize: vertical; font-size: 0.88rem; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: var(--color-text); line-height: 1.5; outline: none;"></textarea>
                   </div>
 
-                  <!-- Diskon Row -->
-                  <div class="summary-row">
-                    <div class="summary-label">
-                      <i data-lucide="percent" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                      <span>Diskon:</span>
+                  <!-- Right: Summary Card -->
+                  <div class="invoice-summary-card" style="margin-top: 0; flex: 1; min-width: 280px; max-width: 520px; margin-left: 0;">
+                    <!-- Subtotal Row -->
+                    <div class="summary-row">
+                      <div class="summary-label">
+                        <i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                        <span>Subtotal:</span>
+                      </div>
+                      <span id="invSubtotal" class="summary-value">Rp 0</span>
                     </div>
-                    <div class="summary-value">
-                      <div class="discount-input-group" style="width: 185px;">
-                        <select id="invDiscountType" class="discount-select" style="flex: 1;">
-                          <option value="none">Tidak</option>
-                          <option value="percent">%</option>
-                          <option value="nominal">Rp</option>
-                        </select>
-                        <input type="number" id="invDiscountValue" value="0" min="0" class="discount-input" style="display: none; width: 100px !important;">
+
+                    <!-- Diskon Row -->
+                    <div class="summary-row">
+                      <div class="summary-label">
+                        <i data-lucide="percent" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                        <span>Diskon:</span>
+                      </div>
+                      <div class="summary-value">
+                        <div class="discount-input-group" style="width: 185px;">
+                          <select id="invDiscountType" class="discount-select" style="flex: 1;">
+                            <option value="none">Tidak</option>
+                            <option value="percent">%</option>
+                            <option value="nominal">Rp</option>
+                          </select>
+                          <input type="number" id="invDiscountValue" value="0" min="0" class="discount-input" style="display: none; width: 100px !important;">
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <!-- Potongan Diskon Row -->
-                  <div class="summary-row" id="invDiscountRow" style="display: none;">
-                    <div class="summary-label">
-                      <i data-lucide="tag" style="width: 16px; height: 16px; color: var(--color-danger);"></i>
-                      <span>Potongan Diskon:</span>
+                    <!-- Potongan Diskon Row -->
+                    <div class="summary-row" id="invDiscountRow" style="display: none;">
+                      <div class="summary-label">
+                        <i data-lucide="tag" style="width: 16px; height: 16px; color: var(--color-danger);"></i>
+                        <span>Potongan Diskon:</span>
+                      </div>
+                      <span id="invDiscountLabel" class="discount-amount-label" style="font-weight: 700; color: var(--color-danger); font-size: 0.95rem; width: 185px; justify-content: flex-end; text-align: right; display: inline-flex;">- Rp 0</span>
                     </div>
-                    <span id="invDiscountLabel" class="discount-amount-label" style="font-weight: 700; color: var(--color-danger); font-size: 0.95rem; width: 185px; justify-content: flex-end; text-align: right; display: inline-flex;">- Rp 0</span>
-                  </div>
 
-                  <!-- Grand Total Row -->
-                  <div class="summary-row grand-total-row">
-                    <div class="summary-label grand-total-label">
-                      <i data-lucide="receipt" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
-                      <span>Grand Total:</span>
-                    </div>
-                    <strong id="invGrandTotal" class="grand-total-value">Rp 0</strong>
-                  </div>
-
-                  <!-- Uang Muka (DP) Row -->
-                  <div class="summary-row">
-                    <div class="summary-label">
-                      <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                      <span>Uang Muka (DP) / Dibayar:</span>
-                    </div>
-                    <div class="summary-value">
-                      <div class="currency-input-wrapper">
-                        <span class="currency-prefix">Rp</span>
-                        <input type="number" id="invPaidAmount" value="0" min="0" class="currency-field">
+                    <!-- Biaya Tambahan Row -->
+                    <div class="summary-row">
+                      <div class="summary-label">
+                        <i data-lucide="plus-circle" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                        <span>Biaya Tambahan:</span>
+                      </div>
+                      <div class="summary-value">
+                        <div class="currency-input-wrapper">
+                          <span class="currency-prefix">Rp</span>
+                          <input type="number" id="invAdditionalFee" value="0" min="0" class="currency-field" oninput="app.recalcCreateInvoiceTotals()">
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <!-- Sisa Tagihan Row -->
-                  <div class="summary-row">
-                    <div class="summary-label">
-                      <i data-lucide="coins" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                      <span>Sisa Tagihan:</span>
+                    <!-- Grand Total Row -->
+                    <div class="summary-row grand-total-row">
+                      <div class="summary-label grand-total-label">
+                        <i data-lucide="receipt" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+                        <span>Grand Total:</span>
+                      </div>
+                      <strong id="invGrandTotal" class="grand-total-value">Rp 0</strong>
                     </div>
-                    <span id="invRemainingBalance" class="remaining-balance-value paid-none">Rp 0</span>
+
+                    <!-- Uang Muka (DP) Row -->
+                    <div class="summary-row">
+                      <div class="summary-label">
+                        <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                        <span>Uang Muka (DP) / Dibayar:</span>
+                      </div>
+                      <div class="summary-value">
+                        <div class="currency-input-wrapper">
+                          <span class="currency-prefix">Rp</span>
+                          <input type="number" id="invPaidAmount" value="0" min="0" class="currency-field">
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Sisa Tagihan Row -->
+                    <div class="summary-row">
+                      <div class="summary-label">
+                        <i data-lucide="coins" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                        <span>Sisa Tagihan:</span>
+                      </div>
+                      <span id="invRemainingBalance" class="remaining-balance-value paid-none">Rp 0</span>
+                    </div>
                   </div>
                 </div>
 
@@ -766,15 +841,17 @@
           </div>
         </header>
         <div class="glass p-6" style="max-width: 600px;">
-          <h3>Google Sheets Integration</h3>
-          <p class="text-muted mb-4">Paste the Google Apps Script Web App URL below to sync data.</p>
-          <div class="form-group">
-            <label>API URL</label>
-            <input type="text" id="settingApiUrl" placeholder="https://script.google.com/macros/s/...">
+          <div class="super-admin-only" style="margin-bottom: 2rem;">
+            <h3>Google Sheets Integration</h3>
+            <p class="text-muted mb-4">Paste the Google Apps Script Web App URL below to sync data.</p>
+            <div class="form-group">
+              <label>API URL</label>
+              <input type="text" id="settingApiUrl" placeholder="https://script.google.com/macros/s/...">
+            </div>
+            <button class="btn btn-primary mt-2" id="btnSaveSettings">Save Settings</button>
           </div>
-          <button class="btn btn-primary mt-2" id="btnSaveSettings">Save Settings</button>
           
-          <h3 class="mt-6">Business Logo</h3>
+          <h3>Business Logo</h3>
           <p class="text-muted mb-4">Upload logo bisnis untuk struk invoice, halaman login, dan sidebar.</p>
           
           <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1rem;">
@@ -801,7 +878,7 @@
           </div>
 
 
-          <div class="mt-6 p-4" style="background: rgba(255,255,255,0.05); border-radius: 8px;">
+          <div class="mt-6 p-4 super-admin-only" style="background: rgba(255,255,255,0.05); border-radius: 8px;">
             <p><i data-lucide="info" style="display:inline-block; vertical-align:middle; width:16px; height:16px;"></i> Buka file <code>Google_Sheets_Tutorial.md</code> untuk panduan lengkap cara mendapatkan URL ini.</p>
           </div>
         </div>
@@ -892,7 +969,7 @@
 
   <!-- EDIT INVOICE MODAL -->
   <div class="modal-backdrop hidden" id="editInvoiceModal" style="z-index: 2000;">
-    <div class="modal white-invoice-modal" style="max-width: 1000px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 20px !important; overflow: hidden;">
+    <div class="modal glass" style="max-width: 1000px; width: 95%; max-height: 90vh; display: flex; flex-direction: column; padding: 0; border-radius: 20px !important; overflow: hidden;">
       
       <!-- Modal Header -->
       <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
@@ -932,8 +1009,9 @@
             <h3 style="margin-top: 0;">Edit Item Menu</h3>
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 15px;">
               <div class="search-input-wrapper" style="flex: 1; position: relative;">
-                <input type="text" id="editInvMenuSelect" readonly placeholder="Ketik / Klik untuk mencari menu..." onclick="app.openMenuSelection('edit')" style="cursor: pointer; padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
-                <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted); cursor: pointer;" onclick="app.openMenuSelection('edit')"></i>
+                <input type="text" id="editInvMenuSelect" placeholder="Ketik untuk mencari & memilih menu..." oninput="app.handleMenuAutocomplete(this, 'edit')" onfocus="app.handleMenuAutocomplete(this, 'edit')" style="padding-left: 2.5rem; width: 100%; font-size: 0.9rem;">
+                <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--color-text-muted);"></i>
+                <div id="editInvMenuSelectSuggestions" class="autocomplete-suggestions hidden"></div>
               </div>
               <button type="button" class="btn btn-primary" onclick="app.openMenuSelection('edit')"><i data-lucide="plus"></i> Pilih Menu</button>
             </div>
@@ -956,79 +1034,105 @@
               </table>
             </div>
             
-            <!-- Summary: Subtotal, Diskon, Grand Total, Uang Muka & Sisa Tagihan (EDIT MODAL) -->
-            <div class="invoice-summary-card" style="margin-top: 24px;">
-              <!-- Subtotal Row -->
-              <div class="summary-row">
-                <div class="summary-label">
-                  <i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                  <span>Subtotal:</span>
+            <!-- Summary Section with Notes (Left) and Pricing Card (Right) -->
+            <div style="display: flex; gap: 20px; align-items: stretch; margin-top: 24px; flex-wrap: wrap;">
+              <!-- Left: Keterangan (Notes) -->
+              <div class="glass" style="flex: 1; min-width: 280px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; color: var(--color-primary); font-weight: 600;">
+                  <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
+                  <span>Keterangan Invoice (Catatan)</span>
                 </div>
-                <span id="editInvSubtotal" class="summary-value">Rp 0</span>
+                <textarea id="editInvNotes" placeholder="Tambahkan catatan khusus untuk katering ini (misal: request pedas, alergi, jam pengiriman, keterangan menu tambahan, dll)..." style="width: 100%; flex: 1; min-height: 140px; resize: vertical; font-size: 0.88rem; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: var(--color-text); line-height: 1.5; outline: none;"></textarea>
               </div>
 
-              <!-- Diskon Row -->
-              <div class="summary-row">
-                <div class="summary-label">
-                  <i data-lucide="percent" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                  <span>Diskon:</span>
+              <!-- Right: Summary Card -->
+              <div class="invoice-summary-card" style="margin-top: 0; flex: 1; min-width: 280px; max-width: 520px; margin-left: 0;">
+                <!-- Subtotal Row -->
+                <div class="summary-row">
+                  <div class="summary-label">
+                    <i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                    <span>Subtotal:</span>
+                  </div>
+                  <span id="editInvSubtotal" class="summary-value">Rp 0</span>
                 </div>
-                <div class="summary-value">
-                  <div class="discount-input-group" style="width: 185px;">
-                    <select id="editInvDiscountType" class="discount-select" style="flex: 1;">
-                      <option value="none">Tidak</option>
-                      <option value="percent">%</option>
-                      <option value="nominal">Rp</option>
-                    </select>
-                    <input type="number" id="editInvDiscountValue" value="0" min="0" class="discount-input" style="display: none; width: 100px !important;">
+
+                <!-- Diskon Row -->
+                <div class="summary-row">
+                  <div class="summary-label">
+                    <i data-lucide="percent" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                    <span>Diskon:</span>
+                  </div>
+                  <div class="summary-value">
+                    <div class="discount-input-group" style="width: 185px;">
+                      <select id="editInvDiscountType" class="discount-select" style="flex: 1;">
+                        <option value="none">Tidak</option>
+                        <option value="percent">%</option>
+                        <option value="nominal">Rp</option>
+                      </select>
+                      <input type="number" id="editInvDiscountValue" value="0" min="0" class="discount-input" style="display: none; width: 100px !important;">
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Potongan Diskon Row -->
-              <div class="summary-row" id="editInvDiscountRow" style="display: none;">
-                <div class="summary-label">
-                  <i data-lucide="tag" style="width: 16px; height: 16px; color: var(--color-danger);"></i>
-                  <span>Potongan Diskon:</span>
+                <!-- Potongan Diskon Row -->
+                <div class="summary-row" id="editInvDiscountRow" style="display: none;">
+                  <div class="summary-label">
+                    <i data-lucide="tag" style="width: 16px; height: 16px; color: var(--color-danger);"></i>
+                    <span>Potongan Diskon:</span>
+                  </div>
+                  <span id="editInvDiscountLabel" class="discount-amount-label" style="font-weight: 700; color: var(--color-danger); font-size: 0.95rem; width: 185px; justify-content: flex-end; text-align: right; display: inline-flex;">- Rp 0</span>
                 </div>
-                <span id="editInvDiscountLabel" class="discount-amount-label" style="font-weight: 700; color: var(--color-danger); font-size: 0.95rem; width: 185px; justify-content: flex-end; text-align: right; display: inline-flex;">- Rp 0</span>
-              </div>
 
-              <!-- Grand Total Row -->
-              <div class="summary-row grand-total-row">
-                <div class="summary-label grand-total-label">
-                  <i data-lucide="receipt" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
-                  <span>Grand Total:</span>
-                </div>
-                <strong id="editInvGrandTotal" class="grand-total-value">Rp 0</strong>
-              </div>
-
-              <!-- Uang Muka (DP) Row -->
-              <div class="summary-row">
-                <div class="summary-label">
-                  <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                  <span>Uang Muka (DP) / Dibayar:</span>
-                </div>
-                <div class="summary-value">
-                  <div class="currency-input-wrapper">
-                    <span class="currency-prefix">Rp</span>
-                    <input type="number" id="editInvPaidAmount" value="0" min="0" class="currency-field" required>
+                <!-- Biaya Tambahan Row -->
+                <div class="summary-row">
+                  <div class="summary-label">
+                    <i data-lucide="plus-circle" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                    <span>Biaya Tambahan:</span>
+                  </div>
+                  <div class="summary-value">
+                    <div class="currency-input-wrapper">
+                      <span class="currency-prefix">Rp</span>
+                      <input type="number" id="editInvAdditionalFee" value="0" min="0" class="currency-field" oninput="app.recalcEditInvoiceTotals()">
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Sisa Tagihan Row -->
-              <div class="summary-row">
-                <div class="summary-label">
-                  <i data-lucide="coins" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                  <span>Sisa Tagihan:</span>
+                <!-- Grand Total Row -->
+                <div class="summary-row grand-total-row">
+                  <div class="summary-label grand-total-label">
+                    <i data-lucide="receipt" style="width: 18px; height: 18px; color: var(--color-primary);"></i>
+                    <span>Grand Total:</span>
+                  </div>
+                  <strong id="editInvGrandTotal" class="grand-total-value">Rp 0</strong>
                 </div>
-                <span id="editInvRemainingBalance" class="remaining-balance-value paid-none">Rp 0</span>
+
+                <!-- Uang Muka (DP) Row -->
+                <div class="summary-row">
+                  <div class="summary-label">
+                    <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                    <span>Uang Muka (DP) / Dibayar:</span>
+                  </div>
+                  <div class="summary-value">
+                    <div class="currency-input-wrapper">
+                      <span class="currency-prefix">Rp</span>
+                      <input type="number" id="editInvPaidAmount" value="0" min="0" class="currency-field" required>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Sisa Tagihan Row -->
+                <div class="summary-row">
+                  <div class="summary-label">
+                    <i data-lucide="coins" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
+                    <span>Sisa Tagihan:</span>
+                  </div>
+                  <span id="editInvRemainingBalance" class="remaining-balance-value paid-none">Rp 0</span>
+                </div>
               </div>
             </div>
             
             <div class="form-actions mt-6" style="display: flex; gap: 12px; align-items: center; justify-content: flex-end; max-width: 440px; margin-left: auto;">
-              <button type="button" class="btn btn-secondary" onclick="app.closeModal('editInvoiceModal')" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;"><i data-lucide="x"></i> Batal</button>
+              <button type="button" class="btn btn-secondary" onclick="app.closeModal('editInvoiceModal')"><i data-lucide="x"></i> Batal</button>
               <button type="button" class="btn btn-warning" onclick="app.saveEditedInvoice(event, 'Draft')" style="background: rgba(212, 175, 55, 0.15); border: 1px solid var(--color-primary); color: var(--color-primary);"><i data-lucide="file-text"></i> Draft</button>
               <button type="submit" class="btn btn-success"><i data-lucide="save"></i> Simpan Perubahan</button>
             </div>
@@ -1185,7 +1289,7 @@
   </div>
 
   <!-- CUSTOM NOTIFICATION MODAL (ALERT/CONFIRM) -->
-  <div class="modal-backdrop hidden" id="customAlertModal" style="z-index: 2500;">
+  <div class="modal-backdrop hidden" id="customAlertModal" style="z-index: 99999;">
     <div class="modal glass" style="max-width: 400px; width: 90%; text-align: center; padding: 28px; border-radius: 16px;">
       <div id="customAlertIconContainer" style="margin-bottom: 20px; display: flex; justify-content: center;">
         <!-- Injected icon dynamically -->
@@ -1246,7 +1350,6 @@
     </div>
   </div>
 
-  <!-- PRINT PREVIEW MODAL -->
   <div class="modal-backdrop hidden" id="pdfTemplateWrapper" style="z-index: 3000;">
     <div class="modal glass" style="max-width: 850px; width: 95%; padding: 0;">
       <div class="modal-header" style="padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
@@ -1313,15 +1416,24 @@
         <!-- Left: Payment Info / Notes Box -->
         <div style="flex: 1; background: transparent; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; color: #475569; font-size: 11px; line-height: 1.5; display: flex; flex-direction: column; justify-content: space-between;">
           <div>
-            <h4 style="margin: 0 0 6px 0; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: #0f172a; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Rekening Pembayaran:</h4>
-            <p style="margin: 0 0 4px 0; font-size: 10.5px;">Silakan melakukan transfer ke:</p>
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-              <p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">
-                BCA: <span style="font-family: monospace; font-size: 12px; font-weight: bold; background: #edf2f7; padding: 1px 4px; border-radius: 3px;">123-456-7890</span> a.n. Poetry's
-              </p>
-              <p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">
-                Mandiri: <span style="font-family: monospace; font-size: 12px; font-weight: bold; background: #edf2f7; padding: 1px 4px; border-radius: 3px;">098-765-4321</span> a.n. Poetry's
-              </p>
+            <!-- Keterangan Invoice (Notes) -->
+            <div id="pdfNotesContainer" style="margin-bottom: 14px; display: none; text-align: left; background: #fffdf5; border: 1px solid #fef3c7; border-left: 4px solid #d4af37; padding: 10px 14px; border-radius: 6px;">
+              <h4 style="margin: 0 0 4px 0; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px; color: #b45309; font-weight: 700;">Catatan / Keterangan:</h4>
+              <p id="pdfNotes" style="margin: 0; font-size: 10px; color: #78350f; white-space: pre-wrap; font-style: italic; line-height: 1.45;"></p>
+            </div>
+
+            <!-- Rekening Pembayaran -->
+            <div>
+              <h4 style="margin: 0 0 6px 0; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: #0f172a; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Rekening Pembayaran:</h4>
+              <p style="margin: 0 0 4px 0; font-size: 10.5px;">Silakan melakukan transfer ke:</p>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">
+                  BCA: <span style="font-family: monospace; font-size: 12px; font-weight: bold; background: #edf2f7; padding: 1px 4px; border-radius: 3px;">123-456-7890</span> a.n. Poetry's
+                </p>
+                <p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">
+                  Mandiri: <span style="font-family: monospace; font-size: 12px; font-weight: bold; background: #edf2f7; padding: 1px 4px; border-radius: 3px;">098-765-4321</span> a.n. Poetry's
+                </p>
+              </div>
             </div>
           </div>
           <p style="margin: 6px 0 0 0; font-size: 9.5px; color: #64748b; font-style: italic;">*Kirim bukti transfer setelah membayar.</p>
@@ -1344,6 +1456,11 @@
           <div id="pdfDiscountRow" style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #ef4444; display: none;">
             <span>Diskon <span id="pdfDiscountInfo"></span></span>
             <strong id="pdfDiscountAmount">- Rp 0</strong>
+          </div>
+          
+          <div id="pdfAdditionalFeeRow" style="display: none; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #475569;">
+            <span>Biaya Tambahan</span>
+            <strong style="color: #0f172a;" id="pdfAdditionalFeeAmount">Rp 0</strong>
           </div>
 
           <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #475569; border-top: 1px dashed #e2e8f0;">
@@ -1373,6 +1490,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=20260522_v6"></script>
+  <script src="logo_base64.js?v=20260704_v31"></script>
+  <script src="app.js?v=20260704_v31"></script>
 </body>
 </html>

@@ -50,7 +50,7 @@ const app = {
       customer: "Pelanggan",
       cateringDate: "Tanggal Katering",
       amount: "Total Tagihan",
-      revenueOverview: "Ikhtisar Pendapatan (7 Hari Terakhir)",
+      revenueOverview: "Ikhtisar Pendapatan (Tahun Ini)",
       upcomingDueInvoices: "Jadwal Jatuh Tempo Terdekat (5 Belum Lunas)",
       remainingAmount: "Sisa Tagihan",
       status: "Status",
@@ -94,7 +94,7 @@ const app = {
        customer: "Customer",
        cateringDate: "Catering Date",
        amount: "Total Amount",
-       revenueOverview: "Revenue Overview (Last 7 Days)",
+       revenueOverview: "Revenue Overview (This Year)",
        upcomingDueInvoices: "Upcoming Due Invoices (Closest 5 Unpaid)",
        nearestSchedules: "Nearest Catering Schedules",
        remainingAmount: "Remaining Amount",
@@ -200,6 +200,16 @@ const app = {
     lucide.createIcons();
     this.checkAuth();
     this.bindEvents();
+
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    const firstDayStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const lastDayStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    this.invoiceState.filterDateFrom = firstDayStr;
+    this.invoiceState.filterDateTo = lastDayStr;
     
     if (this.data.currentUser) {
       // Immediate load from cache for blazing fast UI
@@ -209,6 +219,7 @@ const app = {
       this.data.schedules = JSON.parse(localStorage.getItem('schedules') || '[]');
       
       this.navigate('dashboard');
+      this.updateNotifications();
       
       // Silently fetch fresh data in background
       this.loadData(true);
@@ -231,6 +242,17 @@ const app = {
     const newTheme = isLight ? 'light' : 'dark';
     localStorage.setItem('theme', newTheme);
     this.updateThemeButtonIcon(newTheme);
+
+    // Re-render charts immediately so their colors update matching the theme
+    const activeLink = document.querySelector('.nav-link.active');
+    if (activeLink) {
+      const page = activeLink.getAttribute('data-page');
+      if (page === 'dashboard') {
+        this.renderDashboard();
+      } else if (page === 'reports') {
+        this.renderReports();
+      }
+    }
   },
 
   updateThemeButtonIcon(theme) {
@@ -265,7 +287,15 @@ const app = {
   },
 
   applyLogo() {
-    let logoData = localStorage.getItem('businessLogo') || './logo.png';
+    let logoData = localStorage.getItem('businessLogo');
+    if (!logoData) {
+      if (typeof DEFAULT_LOGO !== 'undefined') {
+        logoData = DEFAULT_LOGO;
+      } else {
+        logoData = './logo.png';
+      }
+    }
+    
     if (logoData && logoData.startsWith('http')) {
       logoData = this.convertDriveUrl(logoData);
     }
@@ -291,8 +321,29 @@ const app = {
         navbarContainer.style.alignItems = 'center';
       }
       if (pdfContainer) {
-        pdfContainer.innerHTML = `<img src="${logoData}" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
-        pdfContainer.style.display = 'block';
+        // For PDF, always use base64 to avoid canvas CORS taint
+        if (logoData.startsWith('data:') || logoData.startsWith('./') || logoData.startsWith('/')) {
+          // Already base64 or local — safe to use directly
+          pdfContainer.innerHTML = `<img src="${logoData}" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
+          pdfContainer.style.display = 'block';
+        } else {
+          // Remote URL — fetch and convert to base64
+          fetch(logoData)
+            .then(r => r.blob())
+            .then(blob => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                pdfContainer.innerHTML = `<img src="${reader.result}" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
+                pdfContainer.style.display = 'block';
+              };
+              reader.readAsDataURL(blob);
+            })
+            .catch(() => {
+              // Fallback: use directly (may cause canvas taint but better than nothing)
+              pdfContainer.innerHTML = `<img src="${logoData}" crossorigin="anonymous" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
+              pdfContainer.style.display = 'block';
+            });
+        }
       }
       if (settingsPreview) {
         settingsPreview.innerHTML = `<img src="${logoData}" style="width: 100%; height: 100%; object-fit: contain;">`;
@@ -437,14 +488,14 @@ const app = {
 
     const adminElements = document.querySelectorAll('.admin-only');
     adminElements.forEach(el => {
-      if (role === 'admin' || role === 'super admin') el.style.display = '';
-      else el.style.display = 'none';
+      if (role === 'admin' || role === 'super admin') el.classList.remove('hidden');
+      else el.classList.add('hidden');
     });
 
     const superAdminElements = document.querySelectorAll('.super-admin-only');
     superAdminElements.forEach(el => {
-      if (role === 'super admin') el.style.display = '';
-      else el.style.display = 'none';
+      if (role === 'super admin') el.classList.remove('hidden');
+      else el.classList.add('hidden');
     });
   },
 
@@ -509,44 +560,83 @@ const app = {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (page === 'create-invoice') {
       this.renderCreateInvoiceInit();
-      // Fall through to normal view switching below
     }
     if (page === 'users' && role !== 'super admin') {
       this.showAlert('Anda tidak memiliki akses ke Manajemen Pengguna.', 'error', 'Akses Ditolak');
       this.navigate('dashboard');
       return;
     }
-    if ((page === 'menus' || page === 'reports') && role !== 'admin' && role !== 'super admin') {
+    if ((page === 'menus' || page === 'reports' || page === 'settings' || page === 'create-invoice') && role !== 'admin' && role !== 'super admin') {
       this.showAlert('Anda tidak memiliki akses ke modul ini.', 'error', 'Akses Ditolak');
       this.navigate('dashboard');
       return;
     }
 
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-    
+    const activeView = document.querySelector('.view.active');
     const viewId = 'view' + page.charAt(0).toUpperCase() + page.slice(1).replace('-', '');
-    const viewEl = document.getElementById(viewId);
-    if(viewEl) viewEl.classList.add('active');
-    
-    const navEl = document.querySelector(`.nav-link[data-page="${page}"]`);
-    if(navEl) {
-      navEl.classList.add('active');
-      // Smoothly scroll active navigation tab into view
-      navEl.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center'
-      });
-      // Slide the background highlight indicator
-      this.updateNavIndicator(page);
-    }
+    const newView = document.getElementById(viewId);
 
+    if (activeView && activeView !== newView) {
+      // 1. Add exit animation class to the old active view
+      activeView.classList.add('exiting');
+      
+      // Update nav link active highlight state instantly for responsive feel
+      document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+      const navEl = document.querySelector(`.nav-link[data-page="${page}"]`);
+      if(navEl) {
+        navEl.classList.add('active');
+        navEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        this.updateNavIndicator(page);
+      }
+
+      // Wait for exit transition to complete before showing the new view
+      setTimeout(() => {
+        activeView.classList.remove('active', 'exiting');
+        if (newView) {
+          newView.classList.add('active');
+          this.triggerPageSpecificRenders(page);
+        }
+      }, 150); // Snappy 150ms exit transition
+    } else {
+      // Direct switch on initial load or if same page
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+      
+      if(newView) newView.classList.add('active');
+      
+      const navEl = document.querySelector(`.nav-link[data-page="${page}"]`);
+      if(navEl) {
+        navEl.classList.add('active');
+        navEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        this.updateNavIndicator(page);
+      }
+      this.triggerPageSpecificRenders(page);
+    }
+  },
+
+  triggerPageSpecificRenders(page) {
     // Page specific renders
     try {
       if(page === 'dashboard') this.renderDashboard();
       if(page === 'menus') this.renderMenus();
-      if(page === 'invoices') this.renderInvoices();
+      if(page === 'invoices') {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = today.getMonth();
+        const firstDayStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        const lastDayStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+        this.invoiceState.filterDateFrom = firstDayStr;
+        this.invoiceState.filterDateTo = lastDayStr;
+
+        const fromInput = document.getElementById('invoiceFilterDateFrom');
+        const toInput = document.getElementById('invoiceFilterDateTo');
+        if (fromInput) fromInput.value = firstDayStr;
+        if (toInput) toInput.value = lastDayStr;
+
+        this.renderInvoices();
+      }
       if(page === 'create-invoice') this.renderCreateInvoiceInit();
       if(page === 'schedules') this.renderSchedules();
       if(page === 'users') this.renderUsers();
@@ -624,7 +714,7 @@ const app = {
         }
       } catch (e) {
         console.error("Error loading data", e);
-        this.showAlert("Failed to load data from API. Please check Settings.", "error");
+        this.showAlert(`Gagal memuat data dari API Database: ${e.message}\nSilakan periksa URL Web App Google Sheets Anda di menu Settings.`, "error");
       }
     }
     
@@ -634,6 +724,8 @@ const app = {
       const page = activeLink.getAttribute('data-page');
       this.navigate(page);
     }
+    
+    this.updateNotifications();
     
     if (!quiet) this.showLoading(false);
   },
@@ -659,6 +751,7 @@ const app = {
       items.push(payload);
       localStorage.setItem(target, JSON.stringify(items));
       this.data[target] = items;
+      this.updateNotifications();
     } else {
       // Save API
       try {
@@ -681,6 +774,7 @@ const app = {
         items[index] = payload;
         localStorage.setItem(target, JSON.stringify(items));
         this.data[target] = items;
+        this.updateNotifications();
       }
     } else {
       try {
@@ -701,6 +795,7 @@ const app = {
       items = items.filter(i => i.id != id);
       localStorage.setItem(target, JSON.stringify(items));
       this.data[target] = items;
+      this.updateNotifications();
     } else {
       try {
         await fetch(`${this.data.apiUrl}?action=DELETE_ROW&sheet=${sheet}&id=${id}&token=${localStorage.getItem('sessionToken') || ''}`);
@@ -772,7 +867,7 @@ const app = {
           }
 
           table.innerHTML += `
-            <tr>
+            <tr class="interactive-table-row" onclick="app.reprintInvoice('${inv.id}')" title="Klik untuk lihat detail / cetak invoice">
               <td><strong>${this.escapeHTML(inv.customerName || '-')}</strong></td>
               <td><strong>${this.formatDate(inv.cateringDate)}</strong></td>
               <td>${this.escapeHTML(inv.cateringLocation || '-')}</td>
@@ -811,7 +906,7 @@ const app = {
         }
 
         dueTable.innerHTML += `
-          <tr>
+          <tr class="interactive-table-row" onclick="app.reprintInvoice('${inv.id}')" title="Klik untuk lihat detail / cetak invoice">
             <td>${this.escapeHTML(inv.invoiceNumber)}</td>
             <td>${this.escapeHTML(inv.customerName || '-')}</td>
             <td><strong>${this.formatDate(inv.cateringDate)}</strong></td>
@@ -929,46 +1024,67 @@ const app = {
     const ctx = document.getElementById('dashboardChart').getContext('2d');
     if(this.chartInstance) this.chartInstance.destroy();
 
-    // Group by date (last 7 days)
-    const dates = [];
-    const paidTotals = [];
-    const unpaidTotals = [];
-    
-    const dayNamesID = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-    
-    for(let i=6; i>=0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = this.getLocalYMD(d);
+    const isLightTheme = document.body.classList.contains('light-theme');
+    const labelColor = isLightTheme ? '#64748b' : '#94a3b8';
+    const gridColor = isLightTheme ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.05)';
+
+    // Group by month for the current year
+    const currentYear = new Date().getFullYear();
+    const currentYearStr = String(currentYear);
+
+    const thisYearInvoices = this.data.invoices.filter(inv => {
+      if (!inv.createdAt) return false;
+      return inv.createdAt.substring(0, 4) === currentYearStr;
+    });
+
+    let totalOmset = 0;
+    let countPaid = 0;
+    let countUnpaid = 0;
+
+    const monthlyPaid = Array(12).fill(0);
+    const monthlyUnpaid = Array(12).fill(0);
+
+    thisYearInvoices.forEach(inv => {
+      const total = Number(inv.totalAmount) || 0;
+      const paid = Number(inv.paidAmount) || 0;
+      const remaining = total - paid;
       
-      const dayName = dayNamesID[d.getDay()];
-      const formattedDate = `${dayName} (${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')})`;
-      dates.push(formattedDate);
-      
-      let dayPaid = 0;
-      let dayUnpaid = 0;
-      
-      this.data.invoices
-        .filter(inv => inv.createdAt.startsWith(dateStr))
-        .forEach(inv => {
-          const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
-          const remaining = Number(inv.totalAmount) - paid;
-          dayPaid += paid;
-          dayUnpaid += (remaining > 0 ? remaining : 0);
-        });
-        
-      paidTotals.push(dayPaid);
-      unpaidTotals.push(dayUnpaid);
-    }
+      totalOmset += total;
+
+      const isLunas = inv.status === 'Lunas' || (paid >= total && total > 0);
+      if (isLunas) {
+        countPaid++;
+      } else {
+        countUnpaid++;
+      }
+
+      // Group by month
+      const monthIndex = parseInt(inv.createdAt.substring(5, 7), 10) - 1;
+      if (monthIndex >= 0 && monthIndex < 12) {
+        monthlyPaid[monthIndex] += paid;
+        monthlyUnpaid[monthIndex] += (remaining > 0 ? remaining : 0);
+      }
+    });
+
+    // Render stats summary cards
+    const omsetEl = document.getElementById('chartStatOmset');
+    const terbayarEl = document.getElementById('chartStatTerbayar');
+    const belumTerbayarEl = document.getElementById('chartStatBelumTerbayar');
+
+    if (omsetEl) omsetEl.textContent = this.formatCurrency(totalOmset);
+    if (terbayarEl) terbayarEl.textContent = `${countPaid} Invoice`;
+    if (belumTerbayarEl) belumTerbayarEl.textContent = `${countUnpaid} Invoice`;
+
+    const monthNamesID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
 
     this.chartInstance = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: dates,
+        labels: monthNamesID,
         datasets: [
           {
             label: 'Terbayar (Paid)',
-            data: paidTotals,
+            data: monthlyPaid,
             borderColor: '#10b981',
             backgroundColor: 'rgba(16, 185, 129, 0.25)',
             borderWidth: 1.5,
@@ -976,7 +1092,7 @@ const app = {
           },
           {
             label: 'Piutang (Receivable)',
-            data: unpaidTotals,
+            data: monthlyUnpaid,
             borderColor: '#f59e0b',
             backgroundColor: 'rgba(245, 158, 11, 0.25)',
             borderWidth: 1.5,
@@ -991,7 +1107,7 @@ const app = {
           legend: { 
             display: true,
             labels: {
-              color: 'var(--color-text-muted)',
+              color: labelColor,
               font: { family: 'Plus Jakarta Sans, sans-serif', size: 11 }
             }
           },
@@ -1016,9 +1132,9 @@ const app = {
           y: { 
             stacked: true,
             beginAtZero: true, 
-            grid: { color: 'rgba(255,255,255,0.05)' },
+            grid: { color: gridColor },
             ticks: {
-              color: 'var(--color-text-muted)',
+              color: labelColor,
               callback: function(value) {
                 if (value >= 1000000) return (value / 1000000) + 'jt';
                 if (value >= 1000) return (value / 1000) + 'rb';
@@ -1028,8 +1144,8 @@ const app = {
           },
           x: { 
             stacked: true,
-            grid: { color: 'rgba(255,255,255,0.05)' },
-            ticks: { color: 'var(--color-text-muted)' }
+            grid: { color: gridColor },
+            ticks: { color: labelColor }
           }
         }
       }
@@ -1598,6 +1714,34 @@ const app = {
     const inv = this.data.invoices.find(i => i.id == id);
     if (!inv) return;
 
+    // Show custom progress loading overlay
+    const overlay = document.getElementById('detailLoadingOverlay');
+    const percentText = document.getElementById('detailLoadingPercent');
+    const progressBar = document.getElementById('detailLoadingBar');
+    const loadingText = document.getElementById('detailLoadingText');
+
+    if (overlay && percentText && progressBar) {
+      percentText.textContent = '0%';
+      progressBar.style.width = '0%';
+      if (loadingText) loadingText.textContent = 'Mengambil data invoice...';
+      overlay.classList.remove('hidden');
+    }
+
+    let progress = 0;
+
+    // Smoothly increment progress to 85%
+    const progressInterval = setInterval(() => {
+      if (progress < 85) {
+        progress += Math.floor(Math.random() * 8) + 3; // random increments
+        if (progress > 85) progress = 85;
+        
+        if (percentText && progressBar) {
+          percentText.textContent = `${progress}%`;
+          progressBar.style.width = `${progress}%`;
+        }
+      }
+    }, 45);
+
     document.getElementById('pdfCustName').textContent = inv.customerName || '-';
     document.getElementById('pdfCustPhone').textContent = this.formatPhone(inv.customerPhone);
     document.getElementById('pdfCatLocation').textContent = inv.cateringLocation || '-';
@@ -1659,9 +1803,32 @@ const app = {
       }
     }
 
+    const addFee = Number(inv.additionalFee) || 0;
+    const pdfAddFeeRow = document.getElementById('pdfAdditionalFeeRow');
+    if (pdfAddFeeRow) {
+      if (addFee > 0) {
+        document.getElementById('pdfAdditionalFeeAmount').textContent = this.formatCurrency(addFee);
+        pdfAddFeeRow.style.display = 'flex';
+      } else {
+        pdfAddFeeRow.style.display = 'none';
+      }
+    }
+
     document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
     document.getElementById('pdfPaidAmount').textContent = this.formatCurrency(finalPaid);
     document.getElementById('pdfRemainingBalance').textContent = this.formatCurrency(finalRemaining);
+
+    const pdfNotesContainer = document.getElementById('pdfNotesContainer');
+    const pdfNotes = document.getElementById('pdfNotes');
+    if (pdfNotesContainer && pdfNotes) {
+      if (inv.notes && inv.notes.trim()) {
+        pdfNotes.textContent = inv.notes;
+        pdfNotesContainer.style.display = 'block';
+      } else {
+        pdfNotesContainer.style.display = 'none';
+        pdfNotes.textContent = '';
+      }
+    }
 
     // Generate Verification QR Code and wait for load
     const qrText = `Poetry's Catering Authentic Invoice\nInvoice No: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nCatering Date: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
@@ -1672,13 +1839,152 @@ const app = {
     // Simpan invoice number untuk konfirmasi cetak
     this.currentPrintInvoiceNumber = inv.invoiceNumber;
     
-    qrImg.onload = () => {
-      this.openModal('pdfTemplateWrapper');
+    // Helper to finish loading up to 100% and show modal
+    const completeLoad = () => {
+      clearInterval(progressInterval);
+      if (loadingText) loadingText.textContent = 'Menampilkan preview...';
+      
+      const finishInterval = setInterval(() => {
+        if (progress < 100) {
+          progress += 5;
+          if (progress > 100) progress = 100;
+          if (percentText && progressBar) {
+            percentText.textContent = `${progress}%`;
+            progressBar.style.width = `${progress}%`;
+          }
+        } else {
+          clearInterval(finishInterval);
+          // Wait 100ms for visual satisfaction, then open
+          setTimeout(() => {
+            if (overlay) overlay.classList.add('hidden');
+            this.openModal('pdfTemplateWrapper');
+            lucide.createIcons();
+          }, 150);
+        }
+      }, 15);
     };
-    qrImg.onerror = () => {
-      this.openModal('pdfTemplateWrapper');
-    };
-    qrImg.src = qrUrl;
+
+    // Convert QR Code URL to base64 to prevent canvas taint (CORS issue)
+    fetch(qrUrl)
+      .then(response => {
+        if (!response.ok) throw new Error('Fetch QR failed');
+        return response.blob();
+      })
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          qrImg.src = reader.result;
+          completeLoad();
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(err => {
+        console.warn("Gagal memuat QR Code dengan CORS, gunakan fallback.", err);
+        qrImg.crossOrigin = "anonymous";
+        qrImg.onload = () => completeLoad();
+        qrImg.onerror = () => completeLoad();
+        qrImg.src = qrUrl;
+      });
+  },
+
+  updateNotifications() {
+    const badge = document.getElementById('notificationBadge');
+    const countLabel = document.getElementById('notificationCountLabel');
+    const listContainer = document.getElementById('notificationList');
+    if (!badge || !listContainer) return;
+
+    const todayStr = this.getLocalYMD(new Date());
+    const dueInvoices = this.data.invoices.filter(inv => {
+      if (!inv.cateringDate) return false;
+      const paid = Number(inv.paidAmount) || 0;
+      const total = Number(inv.totalAmount) || 0;
+      const isLunas = inv.status === 'Lunas' || (paid >= total && total > 0);
+      const cDate = inv.cateringDate.substring(0, 10);
+      return !isLunas && cDate <= todayStr;
+    });
+
+    // Sort by cateringDate descending (most overdue / most recent first)
+    dueInvoices.sort((a, b) => b.cateringDate.localeCompare(a.cateringDate));
+
+    const count = dueInvoices.length;
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = 'flex';
+      if (countLabel) countLabel.textContent = count;
+    } else {
+      badge.style.display = 'none';
+      if (countLabel) countLabel.textContent = 0;
+    }
+
+    listContainer.innerHTML = '';
+    if (count === 0) {
+      listContainer.innerHTML = `
+        <div class="notification-empty-state">
+          <i data-lucide="check-circle" style="width: 24px; height: 24px; color: var(--color-success);"></i>
+          <p style="margin: 0; font-size: 12px; font-weight: 500;">Semua tagihan lunas!</p>
+          <p style="margin: 0; font-size: 10px; color: var(--color-text-muted);">Tidak ada invoice jatuh tempo yang belum dibayar.</p>
+        </div>
+      `;
+    } else {
+      dueInvoices.forEach(inv => {
+        const paid = Number(inv.paidAmount) || 0;
+        const total = Number(inv.totalAmount) || 0;
+        const remaining = total - paid;
+        const status = inv.status || 'Belum Lunas';
+        const isDp = status === 'DP / Sebagian' || (paid > 0 && paid < total);
+        
+        const iconClass = isDp ? 'warning' : 'danger';
+        const iconName = isDp ? 'alert-triangle' : 'alert-circle';
+        const titleText = this.escapeHTML(inv.customerName || 'Pelanggan');
+        const dateFormatted = this.formatDate(inv.cateringDate);
+        const remainingFormatted = this.formatCurrency(remaining);
+        const invoiceNum = this.escapeHTML(inv.invoiceNumber);
+
+        listContainer.innerHTML += `
+          <div class="notification-item" onclick="app.viewNotificationInvoice('${inv.id}')">
+            <div class="notification-item-icon ${iconClass}">
+              <i data-lucide="${iconName}" style="width: 16px; height: 16px;"></i>
+            </div>
+            <div class="notification-item-content">
+              <span class="notification-item-title">${titleText} (${invoiceNum})</span>
+              <span class="notification-item-desc">Sisa tagihan: <strong style="color:var(--color-danger);">${remainingFormatted}</strong></span>
+              <span class="notification-item-date">Jatuh Tempo: ${dateFormatted}</span>
+            </div>
+          </div>
+        `;
+      });
+    }
+    lucide.createIcons({ nodes: [listContainer] });
+  },
+
+  viewNotificationInvoice(invoiceId) {
+    // Close dropdown
+    const dropdown = document.getElementById('notificationDropdown');
+    if (dropdown) dropdown.classList.remove('active');
+
+    const inv = this.data.invoices.find(i => i.id == invoiceId);
+    if (!inv) return;
+
+    // Navigate to invoices view
+    this.navigate('invoices');
+
+    // Clear other filters and set search query to invoice number
+    const searchInput = document.getElementById('invoiceSearchText');
+    const statusInput = document.getElementById('invoiceFilterStatus');
+    const dateFromInput = document.getElementById('invoiceFilterDateFrom');
+    const dateToInput = document.getElementById('invoiceFilterDateTo');
+
+    if (searchInput) searchInput.value = inv.invoiceNumber;
+    if (statusInput) statusInput.value = 'all';
+    if (dateFromInput) dateFromInput.value = '';
+    if (dateToInput) dateToInput.value = '';
+
+    this.invoiceState.searchQuery = inv.invoiceNumber.toLowerCase();
+    this.invoiceState.filterStatus = 'all';
+    this.invoiceState.filterDateFrom = '';
+    this.invoiceState.filterDateTo = '';
+    this.invoiceState.currentPage = 1;
+    this.renderInvoices();
   },
 
   renderCreateInvoiceInit() {
@@ -1691,6 +1997,8 @@ const app = {
     document.getElementById('invCateringLocation').value = '';
     document.getElementById('invCateringDate').value = '';
     document.getElementById('invPaidAmount').value = '0';
+    document.getElementById('invAdditionalFee').value = '0';
+    document.getElementById('invNotes').value = '';
     document.getElementById('invDiscountType').value = 'none';
     const discValInput = document.getElementById('invDiscountValue');
     if (discValInput) {
@@ -1704,6 +2012,7 @@ const app = {
     document.getElementById('pdfInvNumber').textContent = invNum;
     
     this.currentInvoice.items = [];
+    this.currentInvoice.additionalFee = 0;
     this.updateInvoiceItemsTable();
   },
 
@@ -1735,6 +2044,8 @@ const app = {
     document.getElementById('editInvCustomerPhone').value = inv.customerPhone || '';
     document.getElementById('editInvCateringLocation').value = inv.cateringLocation || '';
     document.getElementById('editInvPaidAmount').value = inv.paidAmount || 0;
+    document.getElementById('editInvAdditionalFee').value = inv.additionalFee || 0;
+    document.getElementById('editInvNotes').value = inv.notes || '';
     
     document.getElementById('editInvCateringDate').value = inv.cateringDate ? this.getLocalYMD(inv.cateringDate) : '';
     
@@ -1756,6 +2067,7 @@ const app = {
     this.editInvoiceState.discountType = discType;
     this.editInvoiceState.discountValue = discValue;
     this.editInvoiceState.discountAmount = inv.discountAmount || 0;
+    this.editInvoiceState.additionalFee = inv.additionalFee || 0;
     this.editInvoiceState.total = inv.totalAmount || 0;
     
     this.updateEditInvoiceItemsTable();
@@ -1878,6 +2190,8 @@ const app = {
     const discountAmount = this.editInvoiceState.discountAmount || 0;
     const totalAmount = this.editInvoiceState.total || 0;
     const paidAmount = Number(document.getElementById('editInvPaidAmount').value) || 0;
+    const additionalFee = Number(document.getElementById('editInvAdditionalFee').value) || 0;
+    const notes = document.getElementById('editInvNotes').value.trim();
     
     let status = paidAmount >= totalAmount ? 'Lunas' : (paidAmount > 0 ? 'DP / Sebagian' : 'Belum Lunas');
     if (statusOverride) {
@@ -1895,6 +2209,8 @@ const app = {
       discountType: discountType,
       discountValue: discountValue,
       discountAmount: discountAmount,
+      additionalFee: additionalFee,
+      notes: notes,
       totalAmount: totalAmount,
       status: status,
       items: JSON.stringify(this.editInvoiceState.items)
@@ -2067,7 +2383,11 @@ const app = {
     let discountAmount = 0;
     if (discountType === 'percent') discountAmount = Math.round(subtotal * (discountValue / 100));
     else if (discountType === 'nominal') discountAmount = discountValue;
-    const grandTotal = Math.max(0, subtotal - discountAmount);
+    
+    const addFeeEl = document.getElementById('invAdditionalFee');
+    const additionalFee = addFeeEl ? (Number(addFeeEl.value) || 0) : 0;
+    
+    const grandTotal = Math.max(0, subtotal - discountAmount + additionalFee);
     const subtotalEl = document.getElementById('invSubtotal');
     if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
     const discountRow = document.getElementById('invDiscountRow');
@@ -2098,6 +2418,7 @@ const app = {
     this.currentInvoice.discountType = discountType;
     this.currentInvoice.discountValue = discountValue;
     this.currentInvoice.discountAmount = discountAmount;
+    this.currentInvoice.additionalFee = additionalFee;
     this.currentInvoice.total = grandTotal;
   },
 
@@ -2111,7 +2432,11 @@ const app = {
     let discountAmount = 0;
     if (discountType === 'percent') discountAmount = Math.round(subtotal * (discountValue / 100));
     else if (discountType === 'nominal') discountAmount = discountValue;
-    const grandTotal = Math.max(0, subtotal - discountAmount);
+    
+    const addFeeEl = document.getElementById('editInvAdditionalFee');
+    const additionalFee = addFeeEl ? (Number(addFeeEl.value) || 0) : 0;
+    
+    const grandTotal = Math.max(0, subtotal - discountAmount + additionalFee);
     const subtotalEl = document.getElementById('editInvSubtotal');
     if (subtotalEl) subtotalEl.textContent = this.formatCurrency(subtotal);
     const discountRow = document.getElementById('editInvDiscountRow');
@@ -2142,6 +2467,7 @@ const app = {
     this.editInvoiceState.discountType = discountType;
     this.editInvoiceState.discountValue = discountValue;
     this.editInvoiceState.discountAmount = discountAmount;
+    this.editInvoiceState.additionalFee = additionalFee;
     this.editInvoiceState.total = grandTotal;
   },
 
@@ -2234,6 +2560,8 @@ const app = {
     const catDate = document.getElementById('invCateringDate').value;
     const invDate = document.getElementById('invDateCreated').value;
     const paidAmount = Number(document.getElementById('invPaidAmount').value) || 0;
+    const additionalFee = Number(document.getElementById('invAdditionalFee').value) || 0;
+    const notes = document.getElementById('invNotes').value.trim();
     
     if (isDraft) {
       if (!custName) {
@@ -2273,6 +2601,8 @@ const app = {
       discountType: this.currentInvoice.discountType || 'none',
       discountValue: this.currentInvoice.discountValue || 0,
       discountAmount: this.currentInvoice.discountAmount || 0,
+      additionalFee: additionalFee,
+      notes: notes,
       totalAmount: this.currentInvoice.total,
       paidAmount: paidAmount,
       createdAt: invDate,
@@ -2291,37 +2621,132 @@ const app = {
   },
 
   confirmPrintInvoice() {
-    if (this.currentPrintInvoiceNumber) {
-      this.generatePDF(this.currentPrintInvoiceNumber);
+    try {
+      if (this.currentPrintInvoiceNumber) {
+        this.generatePDF(this.currentPrintInvoiceNumber);
+      } else {
+        this.showAlert("Nomor invoice pratinjau tidak ditemukan di state aplikasi.", "warning");
+      }
+    } catch (err) {
+      this.showAlert("Gagal memproses cetak invoice: " + err.message, "error");
     }
   },
 
   generatePDF(fileName) {
-    this.showLoading(true);
-    const pdfEl = document.getElementById('pdfContent');
-    
-    html2canvas(pdfEl, { scale: 2, useCORS: true }).then(canvas => {
-      try {
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(fileName + '.pdf');
-      } catch (err) {
-        console.error(err);
-        this.showAlert("Gagal membuat PDF.", "error");
-      } finally {
-        this.closeModal('pdfTemplateWrapper');
-        this.showLoading(false);
+    try {
+      const pdfEl = document.getElementById('pdfContent');
+      if (!pdfEl) {
+        this.showAlert('Elemen konten invoice tidak ditemukan di halaman.', 'error');
+        return;
       }
-    }).catch(err => {
-      console.error(err);
-      this.showAlert("Gagal memproses gambar struk.", "error");
-      this.closeModal('pdfTemplateWrapper');
+
+      // Resolve jsPDF class safely supporting all versions/globals
+      let jsPDFClass = null;
+      if (typeof window.jsPDF !== 'undefined') {
+        jsPDFClass = window.jsPDF;
+      } else if (typeof window.jspdf !== 'undefined' && typeof window.jspdf.jsPDF !== 'undefined') {
+        jsPDFClass = window.jspdf.jsPDF;
+      }
+
+      const hasHtml2Canvas = typeof html2canvas !== 'undefined';
+      const hasJsPDF = jsPDFClass !== null;
+
+      if (!hasHtml2Canvas || !hasJsPDF) {
+        this.showAlert(`Library cetak PDF belum termuat sepenuhnya.\nhtml2canvas: ${hasHtml2Canvas ? 'OK' : 'Belum termuat'}\njsPDF: ${hasJsPDF ? 'OK' : 'Belum termuat'}\nSilakan refresh halaman dan coba kembali.`, 'warning');
+        return;
+      }
+
+      this.showLoading(true, 'Menyiapkan PDF...');
+
+      // 1. Force safe system font to prevent Web Font tainting in Safari/Firefox
+      const originalFont = pdfEl.style.fontFamily;
+      pdfEl.style.fontFamily = 'Arial, Helvetica, sans-serif';
+
+      // 2. Hide SVGs which often cause DOMException: The operation is insecure
+      const svgs = pdfEl.querySelectorAll('svg');
+      const svgOriginals = [];
+      svgs.forEach(svg => {
+        svgOriginals.push({ el: svg, display: svg.style.display });
+        svg.style.display = 'none';
+      });
+
+      // 3. Hide ALL images that are not base64 data URIs (local files cause Canvas Taint on file:// protocol)
+      const taintedImages = [];
+      const images = pdfEl.querySelectorAll('img');
+      images.forEach(img => {
+        const src = img.src || '';
+        if (!src.startsWith('data:')) {
+          taintedImages.push({ element: img, originalDisplay: img.style.display });
+          img.style.display = 'none';
+        }
+      });
+
+      // Helper function to restore the DOM after PDF generation
+      const restoreDOM = () => {
+        pdfEl.style.fontFamily = originalFont;
+        svgs.forEach((svg, i) => { svg.style.display = svgOriginals[i].display; });
+        taintedImages.forEach(item => { 
+          item.element.style.display = item.originalDisplay; 
+        });
+      };
+
+      // Wait 150ms for browser DOM to actually apply the new image sources before capturing
+      setTimeout(() => {
+        // Render canvas with safety settings (useCORS: false, allowTaint: false) to guarantee no security errors
+        html2canvas(pdfEl, { 
+          scale: 2, 
+          useCORS: false, 
+          allowTaint: false, 
+          logging: true,
+          imageTimeout: 4000 
+        })
+          .then(canvas => {
+            // Canvas is guaranteed clean and exportable
+            return canvas.toDataURL('image/png');
+          })
+          .then(imgData => {
+            let pdf;
+            try {
+              pdf = new jsPDFClass('p', 'mm', 'a4');
+            } catch (e) {
+              throw new Error('Gagal membuat objek PDF baru: ' + e.message);
+            }
+
+            // Safe dimension calculations
+            const pdfWidth = typeof pdf.internal.pageSize.getWidth === 'function'
+              ? pdf.internal.pageSize.getWidth()
+              : (pdf.internal.pageSize.width || 210);
+              
+            const pdfHeight = (pdfEl.offsetHeight * pdfWidth) / pdfEl.offsetWidth;
+            
+            try {
+              pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            } catch (e) {
+              throw new Error('Gagal menyisipkan tangkapan layar ke halaman PDF: ' + e.message);
+            }
+
+            try {
+              pdf.save(fileName + '.pdf');
+            } catch (e) {
+              throw new Error('Gagal menyimpan file PDF: ' + e.message);
+            }
+            
+            restoreDOM();
+            this.showLoading(false);
+            this.closeModal('pdfTemplateWrapper');
+          })
+          .catch(err => {
+            console.error('PDF generation failure:', err);
+            restoreDOM();
+            this.showLoading(false);
+            this.showAlert('Proses pembuatan PDF gagal: ' + err.message, 'error');
+          });
+      }, 150);
+    } catch (globalErr) {
+      console.error('Global catch inside generatePDF:', globalErr);
       this.showLoading(false);
-    });
+      this.showAlert('Terjadi kesalahan tak terduga: ' + globalErr.message, 'error');
+    }
   },
 
   // === Feature: Schedules ===
@@ -3383,6 +3808,10 @@ const app = {
     const ctx = canvas.getContext('2d');
     if (this.reportChartInstance) this.reportChartInstance.destroy();
 
+    const isLightTheme = document.body.classList.contains('light-theme');
+    const labelColor = isLightTheme ? '#64748b' : '#94a3b8';
+    const gridColor = isLightTheme ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+
     if (!monthlyGroups || !sortedMonths) {
       monthlyGroups = {};
       this.data.invoices.forEach(inv => {
@@ -3451,7 +3880,7 @@ const app = {
           legend: {
             display: true,
             labels: {
-              color: 'var(--color-text-muted)',
+              color: labelColor,
               font: { family: 'Plus Jakarta Sans, sans-serif', size: 11 }
             }
           },
@@ -3476,9 +3905,9 @@ const app = {
           y: { 
             stacked: true,
             beginAtZero: true, 
-            grid: { color: 'rgba(255,255,255,0.06)' }, 
+            grid: { color: gridColor }, 
             ticks: { 
-              color: 'var(--color-text-muted)',
+              color: labelColor,
               callback: function(value) {
                 if (value >= 1000000) return (value / 1000000) + 'jt';
                 if (value >= 1000) return (value / 1000) + 'rb';
@@ -3489,7 +3918,7 @@ const app = {
           x: { 
             stacked: true,
             grid: { display: false }, 
-            ticks: { color: 'var(--color-text-muted)'} 
+            ticks: { color: labelColor } 
           }
         }
       }
@@ -4013,6 +4442,88 @@ const app = {
     reader.readAsArrayBuffer(file);
   },
 
+  handleMenuAutocomplete(inputEl, target) {
+    const val = inputEl.value.toLowerCase().trim();
+    const suggestionsId = target === 'create' ? 'invMenuSelectSuggestions' : 'editInvMenuSelectSuggestions';
+    const container = document.getElementById(suggestionsId);
+    if (!container) return;
+
+    if (!val) {
+      container.classList.add('hidden');
+      container.innerHTML = '';
+      return;
+    }
+
+    // Filter menu database
+    const matches = this.data.menus.filter(m => 
+      m.name.toLowerCase().includes(val)
+    ).slice(0, 8); // Limit to 8 matches
+
+    if (matches.length === 0) {
+      container.innerHTML = `
+        <div style="padding: 10px 14px; color: var(--color-text-muted); font-size: 0.88rem; font-style: italic;">
+          Menu tidak ditemukan.
+        </div>
+      `;
+      container.classList.remove('hidden');
+      return;
+    }
+
+    container.innerHTML = matches.map(m => `
+      <div class="autocomplete-suggestion-item" onclick="app.addMenuItemDirectly('${m.id}', '${target}')">
+        <span class="autocomplete-suggestion-name">${this.escapeHTML(m.name)}</span>
+        <span class="autocomplete-suggestion-price">${this.formatCurrency(m.price)}</span>
+      </div>
+    `).join('');
+    
+    container.classList.remove('hidden');
+  },
+
+  addMenuItemDirectly(menuId, target) {
+    const menu = this.data.menus.find(m => m.id == menuId);
+    if (!menu) return;
+
+    const targetArray = target === 'create' ? this.currentInvoice.items : this.editInvoiceState.items;
+    
+    // Check if item already exists
+    const existing = targetArray.find(item => item.menuId == menu.id);
+    if (existing) {
+      existing.qty += 1;
+      existing.subtotal = existing.qty * existing.price;
+    } else {
+      targetArray.push({
+        menuId: menu.id,
+        name: menu.name,
+        price: menu.price,
+        qty: 1,
+        unit: menu.unit || 'pax',
+        subtotal: menu.price
+      });
+    }
+
+    // Clear input field & hide suggestions
+    const inputId = target === 'create' ? 'invMenuSelect' : 'editInvMenuSelect';
+    const suggestionsId = target === 'create' ? 'invMenuSelectSuggestions' : 'editInvMenuSelectSuggestions';
+    
+    const inputEl = document.getElementById(inputId);
+    if (inputEl) inputEl.value = '';
+    
+    const suggestionsEl = document.getElementById(suggestionsId);
+    if (suggestionsEl) {
+      suggestionsEl.classList.add('hidden');
+      suggestionsEl.innerHTML = '';
+    }
+
+    // Refresh UI
+    if (target === 'create') {
+      this.updateInvoiceItemsTable();
+      this.recalcCreateInvoiceTotals();
+    } else {
+      this.updateEditInvoiceItemsTable();
+      this.recalcEditInvoiceTotals();
+    }
+  },
+
   openMenuSelection(target) {
     this.menuModalState.target = target;
     this.menuModalState.searchQuery = '';
@@ -4266,6 +4777,31 @@ const app = {
       navbarUser.addEventListener('click', () => this.openProfileModal());
     }
 
+    // Notification Toggle
+    const btnNotif = document.getElementById('btnNotificationToggle');
+    const dropdownNotif = document.getElementById('notificationDropdown');
+    if (btnNotif && dropdownNotif) {
+      btnNotif.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownNotif.classList.toggle('active');
+      });
+      document.addEventListener('click', (e) => {
+        if (!dropdownNotif.contains(e.target) && e.target !== btnNotif && !btnNotif.contains(e.target)) {
+          dropdownNotif.classList.remove('active');
+        }
+        
+        // Hide autocomplete suggestions on click outside
+        const createSuggestions = document.getElementById('invMenuSelectSuggestions');
+        if (createSuggestions && !createSuggestions.contains(e.target) && e.target.id !== 'invMenuSelect') {
+          createSuggestions.classList.add('hidden');
+        }
+        const editSuggestions = document.getElementById('editInvMenuSelectSuggestions');
+        if (editSuggestions && !editSuggestions.contains(e.target) && e.target.id !== 'editInvMenuSelect') {
+          editSuggestions.classList.add('hidden');
+        }
+      });
+    }
+
     // Settings
     document.getElementById('btnSaveSettings').addEventListener('click', () => this.saveSettings());
 
@@ -4274,7 +4810,6 @@ const app = {
     document.getElementById('userForm').addEventListener('submit', (e) => this.saveUser(e));
     
     // Invoice events
-    document.getElementById('btnSaveInvoice').addEventListener('click', () => this.saveInvoice());
     
     // Create Invoice Discount listeners
     const invDiscountType = document.getElementById('invDiscountType');
