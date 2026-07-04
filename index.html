@@ -129,11 +129,13 @@
       <div class="navbar-right">
         <!-- Language Switcher Flags -->
         <div class="navbar-lang">
-          <button id="btnLangID" onclick="app.setLanguage('id')" class="lang-flag-btn active" title="Bahasa Indonesia">
-            <span>🇮🇩</span> <span style="font-size: 10px;">ID</span>
+          <button id="btnLangID" onclick="app.setLanguage('id')" class="lang-flag-btn active" title="Bahasa Indonesia" style="display: inline-flex; align-items: center; gap: 6px;">
+            <img src="https://flagcdn.com/w20/id.png" alt="ID" style="width: 20px; height: auto; border-radius: 2px; display: inline-block;">
+            <span style="font-size: 10px; font-weight: 600;">ID</span>
           </button>
-          <button id="btnLangEN" onclick="app.setLanguage('en')" class="lang-flag-btn" title="English">
-            <span>🇬🇧</span> <span style="font-size: 10px;">EN</span>
+          <button id="btnLangEN" onclick="app.setLanguage('en')" class="lang-flag-btn" title="English" style="display: inline-flex; align-items: center; gap: 6px;">
+            <img src="https://flagcdn.com/w20/gb.png" alt="EN" style="width: 20px; height: auto; border-radius: 2px; display: inline-block;">
+            <span style="font-size: 10px; font-weight: 600;">EN</span>
           </button>
         </div>
 
@@ -261,8 +263,16 @@
               <div class="hero-mini-stat tooltip-host">
                 <div class="hero-mini-stat-label">Invoice Terbayar</div>
                 <div id="chartStatTerbayar" class="hero-mini-stat-value" style="color: var(--color-success)">0</div>
-                <div class="tooltip-content">
-                  Sisa Invoice: <span id="chartStatBelumTerbayar" style="color: var(--color-danger); font-weight: bold;">0</span>
+                <div class="tooltip-content" style="min-width: 220px;">
+                  <div style="font-weight: 700; color: var(--color-tooltip-title); margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Status Invoice Tahun Ini</div>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 6px; gap: 15px; font-size: 12px;">
+                    <span style="color: var(--color-text-muted);">• Lunas:</span>
+                    <strong style="color: var(--color-success); font-weight: 600;"><span id="chartStatTerbayarCount">0</span></strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; gap: 15px; font-size: 12px;">
+                    <span style="color: var(--color-text-muted);">• Belum Lunas:</span>
+                    <strong style="color: var(--color-danger); font-weight: 600;"><span id="chartStatBelumTerbayar">0</span></strong>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1564,7 +1574,7 @@
     </div>
   </div>
 
-  <script src="logo_base64.js?v=20260704_v49"></script>
-  <script src="app.js?v=20260704_v49"></script>
+  <script src="logo_base64.js?v=20260704_v51"></script>
+  <script src="app.js?v=20260704_v51"></script>
 </body>
 </html>

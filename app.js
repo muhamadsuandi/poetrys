@@ -898,13 +898,13 @@ const app = {
       } else {
         const sortedPaid = [...paidInvoices].sort((a,b) => new Date(b.dateCreated) - new Date(a.dateCreated));
         const list = sortedPaid.slice(0, 5).map(i => `<div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 4px;"><span>• ${i.invoiceNumber}</span><strong style="color: var(--color-success);">${i.customerName.split(' ')[0]}</strong></div>`).join('');
-        tpPaidInv.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">5 Invoice Lunas Terbaru</div>${list}${paidInvoices.length > 5 ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-primary); font-weight: 600;">+ ${paidInvoices.length - 5} invoice lunas lainnya</div>` : ''}`;
+        tpPaidInv.innerHTML = `<div style="font-weight: 700; color: var(--color-tooltip-title); margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">5 Invoice Lunas Terbaru</div>${list}${paidInvoices.length > 5 ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-primary); font-weight: 600;">+ ${paidInvoices.length - 5} invoice lunas lainnya</div>` : ''}`;
       }
     }
     
     const tpPaidRev = document.getElementById('tooltipPaidRevenue');
     if (tpPaidRev) {
-      tpPaidRev.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Revenue Terkumpul</div><div style="color: var(--color-text-muted);">Total pendapatan uang nyata yang telah masuk ke kas dari <strong style="color: #fff;">${paidInvoices.length} Lunas</strong> dan DP dari <strong style="color: #fff;">${unpaidInvoices.filter(i => Number(i.paidAmount) > 0).length} Belum Lunas</strong>.</div>`;
+      tpPaidRev.innerHTML = `<div style="font-weight: 700; color: var(--color-tooltip-title); margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Revenue Terkumpul</div><div style="color: var(--color-text-muted);">Total pendapatan uang nyata yang telah masuk ke kas dari <strong style="color: var(--color-tooltip-title);">${paidInvoices.length} Lunas</strong> dan DP dari <strong style="color: var(--color-tooltip-title);">${unpaidInvoices.filter(i => Number(i.paidAmount) > 0).length} Belum Lunas</strong>.</div>`;
     }
 
     const tpUnpaidInv = document.getElementById('tooltipUnpaidInvoices');
@@ -918,13 +918,13 @@ const app = {
           const r = Number(i.totalAmount) - p;
           return `<div style="display: flex; justify-content: space-between; gap: 15px; margin-bottom: 4px;"><span>• ${i.invoiceNumber}</span><strong style="color: var(--color-danger);">- ${this.formatCurrency(r)}</strong></div>`;
         }).join('');
-        tpUnpaidInv.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Detail Tagihan (Top 5)</div>${list}${unpaidInvoices.length > 5 ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-danger); font-weight: 600;">+ ${unpaidInvoices.length - 5} invoice lain mengantre</div>` : ''}`;
+        tpUnpaidInv.innerHTML = `<div style="font-weight: 700; color: var(--color-tooltip-title); margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Detail Tagihan (Top 5)</div>${list}${unpaidInvoices.length > 5 ? `<div style="margin-top: 8px; font-size: 11px; color: var(--color-danger); font-weight: 600;">+ ${unpaidInvoices.length - 5} invoice lain mengantre</div>` : ''}`;
       }
     }
 
     const tpUnpaidRev = document.getElementById('tooltipUnpaidRevenue');
     if (tpUnpaidRev) {
-      tpUnpaidRev.innerHTML = `<div style="font-weight: 700; color: #fff; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Potensi Pendapatan</div><div style="color: var(--color-text-muted);">Total tagihan yang belum tertagih dari <strong style="color: #fff;">${unpaidInvoices.length} transaksi aktif</strong>. Sisa pembayaran ini diharapkan segera masuk ke kas Anda.</div>`;
+      tpUnpaidRev.innerHTML = `<div style="font-weight: 700; color: var(--color-tooltip-title); margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Potensi Pendapatan</div><div style="color: var(--color-text-muted);">Total tagihan yang belum tertagih dari <strong style="color: var(--color-tooltip-title);">${unpaidInvoices.length} transaksi aktif</strong>. Sisa pembayaran ini diharapkan segera masuk ke kas Anda.</div>`;
     }
 
     // Nearest Schedules Table
@@ -1167,7 +1167,9 @@ const app = {
 
     if (omsetEl) this.animateValue(omsetEl, 0, totalOmset, 1500, true);
     if (terbayarEl) terbayarEl.textContent = `${countPaid} Invoice`;
-    if (belumTerbayarEl) belumTerbayarEl.textContent = `${countUnpaid}`;
+    const terbayarCountEl = document.getElementById('chartStatTerbayarCount');
+    if (terbayarCountEl) terbayarCountEl.textContent = `${countPaid} Invoice`;
+    if (belumTerbayarEl) belumTerbayarEl.textContent = `${countUnpaid} Invoice`;
 
     const canvas = document.getElementById('dashboardTrendChart');
     if (canvas) {

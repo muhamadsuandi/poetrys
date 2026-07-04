@@ -11,6 +11,7 @@
   --color-success: #10b981;
   --font-sans: 'Inter', sans-serif;
   --font-serif: 'Playfair Display', serif;
+  --color-tooltip-title: #ffffff;
 }
 
 * {
@@ -836,6 +837,7 @@ body.light-theme {
   --color-text: #0f172a; /* Slate 900 */
   --color-text-muted: #64748b; /* Slate 500 */
   --color-border: rgba(15, 23, 42, 0.08);
+  --color-tooltip-title: #0f172a;
 }
 
 body.light-theme .glass {
