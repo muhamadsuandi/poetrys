@@ -201,6 +201,9 @@ const app = {
     this.initTheme();
     this.applyLogo();
     
+    const yearSpan = document.getElementById('currentYear');
+    if (yearSpan) yearSpan.textContent = new Date().getFullYear();
+    
     // Set active language
     const savedLang = localStorage.getItem('appLanguage') || 'id';
     this.setLanguage(savedLang);
@@ -697,6 +700,8 @@ const app = {
       if(page === 'users') this.renderUsers();
       if(page === 'settings') {
         document.getElementById('settingApiUrl').value = this.data.apiUrl;
+        const paymentAccInput = document.getElementById('settingPaymentAccounts');
+        if (paymentAccInput) paymentAccInput.value = localStorage.getItem('paymentAccounts') || '';
         const logoData = localStorage.getItem('businessLogo') || '';
         const urlInput = document.getElementById('settingLogoUrl');
         if (urlInput) {
@@ -1115,12 +1120,7 @@ const app = {
   },
 
   renderDashboardChart() {
-    const ctx = document.getElementById('dashboardChart').getContext('2d');
-    if(this.chartInstance) this.chartInstance.destroy();
-
     const isLightTheme = document.body.classList.contains('light-theme');
-    const labelColor = isLightTheme ? '#64748b' : '#94a3b8';
-    const gridColor = isLightTheme ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.05)';
 
     // Group by month for the current year
     const currentYear = new Date().getFullYear();
@@ -1165,85 +1165,78 @@ const app = {
     const terbayarEl = document.getElementById('chartStatTerbayar');
     const belumTerbayarEl = document.getElementById('chartStatBelumTerbayar');
 
-    if (omsetEl) omsetEl.textContent = this.formatCurrency(totalOmset);
+    if (omsetEl) this.animateValue(omsetEl, 0, totalOmset, 1500, true);
     if (terbayarEl) terbayarEl.textContent = `${countPaid} Invoice`;
-    if (belumTerbayarEl) belumTerbayarEl.textContent = `${countUnpaid} Invoice`;
+    if (belumTerbayarEl) belumTerbayarEl.textContent = `${countUnpaid}`;
 
-    const monthNamesID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+    const canvas = document.getElementById('dashboardTrendChart');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if(this.chartInstance) this.chartInstance.destroy();
 
-    this.chartInstance = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: monthNamesID,
-        datasets: [
-          {
-            label: 'Terbayar (Paid)',
-            data: monthlyPaid,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.25)',
-            borderWidth: 1.5,
-            borderRadius: 4
-          },
-          {
-            label: 'Piutang (Receivable)',
-            data: monthlyUnpaid,
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.25)',
-            borderWidth: 1.5,
-            borderRadius: 4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { 
-          legend: { 
-            display: true,
-            labels: {
-              color: labelColor,
-              font: { family: 'Plus Jakarta Sans, sans-serif', size: 11 }
+      const monthNamesID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
+      const themeBg = isLightTheme ? 'rgba(255,255,255,0.9)' : 'rgba(30,41,59,0.9)';
+      const themeColor = isLightTheme ? '#0f172a' : '#f8fafc';
+      const tooltipBorder = isLightTheme ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+
+      // Calculate total monthly revenue
+      const monthlyTotal = monthlyPaid.map((p, i) => p + monthlyUnpaid[i]);
+
+      // Create gradient for Area Chart
+      const gradient = ctx.createLinearGradient(0, 0, 0, 100);
+      gradient.addColorStop(0, 'rgba(14, 165, 233, 0.4)');
+      gradient.addColorStop(1, 'rgba(14, 165, 233, 0.0)');
+
+      this.chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: monthNamesID,
+          datasets: [{
+            label: 'Total Omset',
+            data: monthlyTotal,
+            borderColor: '#0ea5e9',
+            backgroundColor: gradient,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#0ea5e9',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            fill: true,
+            tension: 0.4 // Smooth curve
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: themeBg,
+              titleColor: themeColor,
+              bodyColor: themeColor,
+              borderColor: tooltipBorder,
+              borderWidth: 1,
+              padding: 10,
+              displayColors: false,
+              callbacks: {
+                label: function(context) {
+                  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.parsed.y);
+                }
+              }
             }
           },
-          tooltip: {
+          scales: {
+            x: { display: false },
+            y: { display: false, min: 0 }
+          },
+          interaction: {
             mode: 'index',
             intersect: false,
-            callbacks: {
-              label: function(context) {
-                let label = context.dataset.label || '';
-                if (label) {
-                  label += ': ';
-                }
-                if (context.parsed.y !== null) {
-                  label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.parsed.y);
-                }
-                return label;
-              }
-            }
-          }
-        },
-        scales: { 
-          y: { 
-            stacked: true,
-            beginAtZero: true, 
-            grid: { color: gridColor },
-            ticks: {
-              color: labelColor,
-              callback: function(value) {
-                if (value >= 1000000) return (value / 1000000) + 'jt';
-                if (value >= 1000) return (value / 1000) + 'rb';
-                return value;
-              }
-            }
-          },
-          x: { 
-            stacked: true,
-            grid: { color: gridColor },
-            ticks: { color: labelColor }
           }
         }
-      }
-    });
+      });
+    }
   },
 
   // === Feature: Menus ===
@@ -1911,6 +1904,22 @@ const app = {
     document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
     document.getElementById('pdfPaidAmount').textContent = this.formatCurrency(finalPaid);
     document.getElementById('pdfRemainingBalance').textContent = this.formatCurrency(finalRemaining);
+
+    // Render Dynamic Payment Accounts
+    const paymentAccounts = localStorage.getItem('paymentAccounts');
+    const paymentList = document.getElementById('pdfPaymentAccountsList');
+    const paymentContainer = document.getElementById('pdfPaymentAccountsContainer');
+    if (paymentContainer && paymentList) {
+      if (paymentAccounts && paymentAccounts.trim() !== '') {
+        paymentContainer.style.display = 'block';
+        paymentList.innerHTML = paymentAccounts.trim().split('\n').map(acc => {
+          return `<p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">${this.escapeHTML(acc.trim())}</p>`;
+        }).join('');
+      } else {
+        paymentContainer.style.display = 'none';
+      }
+    }
+
 
     const pdfNotesContainer = document.getElementById('pdfNotesContainer');
     const pdfNotes = document.getElementById('pdfNotes');
@@ -4276,6 +4285,9 @@ const app = {
     }
     localStorage.setItem('apiUrl', url);
     this.data.apiUrl = url;
+    const paymentAccounts = document.getElementById('settingPaymentAccounts').value;
+    localStorage.setItem('paymentAccounts', paymentAccounts);
+    
     this.showAlert("Pengaturan disimpan! Memuat ulang data...", "success");
     this.loadData();
   },

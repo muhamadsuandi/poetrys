@@ -3070,7 +3070,6 @@ body.light-theme .autocomplete-suggestion-item {
 .hero-stat-card {
   text-align: center;
   position: relative;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -3169,4 +3168,10 @@ body.light-theme .hero-mini-stat {
 }
 body.light-theme .hero-mini-stat-value {
   color: #0f172a;
+}
+body.light-theme .tooltip-content {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }

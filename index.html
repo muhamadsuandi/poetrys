@@ -248,27 +248,28 @@
               </table>
             </div>
           </div>
-          <div class="widget glass">
-            <h3 data-lang-key="revenueOverview">Revenue Overview (Last 7 Days)</h3>
+          <div class="glass p-6 hero-stat-card" style="margin-bottom: 0;">
+            <div class="hero-glow"></div>
+            <h3 class="hero-revenue-title">Omset Tahun Ini</h3>
             
-            <!-- Summary Stats for Year -->
-            <div class="chart-stats-summary" style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 120px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 14px;">
-                <div style="font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Omset Tahun Ini</div>
-                <div id="chartStatOmset" style="font-size: 16px; font-weight: 700; color: var(--color-primary); margin-top: 4px;">Rp 0</div>
-              </div>
-              <div style="flex: 1; min-width: 120px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 14px;">
-                <div style="font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Invoice Terbayar</div>
-                <div id="chartStatTerbayar" style="font-size: 16px; font-weight: 700; color: var(--color-success); margin-top: 4px;">0 Invoice</div>
-              </div>
-              <div style="flex: 1; min-width: 120px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 14px;">
-                <div style="font-size: 10px; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Belum Terbayar</div>
-                <div id="chartStatBelumTerbayar" style="font-size: 16px; font-weight: 700; color: var(--color-danger); margin-top: 4px;">0 Invoice</div>
+            <div class="hero-revenue-amount-container">
+              <span class="hero-revenue-currency">Rp</span> 
+              <span id="chartStatOmset">0</span>
+            </div>
+
+            <div class="hero-stats-container">
+              <div class="hero-mini-stat tooltip-host">
+                <div class="hero-mini-stat-label">Invoice Terbayar</div>
+                <div id="chartStatTerbayar" class="hero-mini-stat-value" style="color: var(--color-success)">0</div>
+                <div class="tooltip-content">
+                  Sisa Invoice: <span id="chartStatBelumTerbayar" style="color: var(--color-danger); font-weight: bold;">0</span>
+                </div>
               </div>
             </div>
 
-            <div class="chart-container">
-              <canvas id="dashboardChart"></canvas>
+            <!-- Mini Trend Chart -->
+            <div style="position: relative; height: 100px; width: 100%; margin-top: 15px;">
+              <canvas id="dashboardTrendChart"></canvas>
             </div>
           </div>
         </div>
@@ -900,6 +901,16 @@
           </div>
         </header>
         <div class="glass p-6" style="max-width: 600px;">
+          <!-- Payment Accounts (Admin & Super Admin) -->
+          <div style="margin-bottom: 2rem;">
+            <h3>Informasi Pembayaran</h3>
+            <div class="form-group" style="margin-top: 1rem;">
+              <label>Informasi Rekening Pembayaran</label>
+              <textarea id="settingPaymentAccounts" class="form-control" rows="3" placeholder="Contoh:&#10;BCA: 123-456-7890 a.n. Katering&#10;Mandiri: 098-765-4321 a.n. Katering" style="background: rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--color-text); padding: 10px; width: 100%;"></textarea>
+              <p class="text-muted" style="font-size: 11px; margin-top: 4px;">Teks ini akan ditampilkan di struk PDF Invoice. Gunakan Enter (baris baru) untuk memisahkan bank.</p>
+            </div>
+          </div>
+
           <div class="super-admin-only" style="margin-bottom: 2rem;">
             <h3>Google Sheets Integration</h3>
             <p class="text-muted mb-4">Paste the Google Apps Script Web App URL below to sync data.</p>
@@ -907,7 +918,6 @@
               <label>API URL</label>
               <input type="text" id="settingApiUrl" placeholder="https://script.google.com/macros/s/...">
             </div>
-            <button class="btn btn-primary mt-2" id="btnSaveSettings">Save Settings</button>
           </div>
           
           <h3>Business Logo</h3>
@@ -937,11 +947,21 @@
           </div>
 
 
+          <div style="margin-top: 2rem; border-top: 1px solid var(--color-border); padding-top: 1.5rem;">
+            <button class="btn btn-primary" id="btnSaveSettings" style="width: 100%;">Save Settings</button>
+          </div>
+
           <div class="mt-6 p-4 super-admin-only" style="background: rgba(255,255,255,0.05); border-radius: 8px;">
             <p><i data-lucide="info" style="display:inline-block; vertical-align:middle; width:16px; height:16px;"></i> Buka file <code>Google_Sheets_Tutorial.md</code> untuk panduan lengkap cara mendapatkan URL ini.</p>
           </div>
         </div>
       </section>
+
+      <!-- FOOTER -->
+      <footer style="text-align: center; margin-top: 40px; padding-top: 20px; padding-bottom: 20px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 13px;">
+        &copy; <span id="currentYear"></span> <strong>Poetry's Catering</strong>. All rights reserved.<br>
+        <span style="font-size: 11px; opacity: 0.7;">Crafted with passion for culinary excellence.</span>
+      </footer>
 
     </main>
   </div>
@@ -1482,16 +1502,11 @@
             </div>
 
             <!-- Rekening Pembayaran -->
-            <div>
+            <div id="pdfPaymentAccountsContainer">
               <h4 style="margin: 0 0 6px 0; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; color: #0f172a; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Rekening Pembayaran:</h4>
               <p style="margin: 0 0 4px 0; font-size: 10.5px;">Silakan melakukan transfer ke:</p>
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">
-                  BCA: <span style="font-family: monospace; font-size: 12px; font-weight: bold; background: #edf2f7; padding: 1px 4px; border-radius: 3px;">123-456-7890</span> a.n. Poetry's
-                </p>
-                <p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">
-                  Mandiri: <span style="font-family: monospace; font-size: 12px; font-weight: bold; background: #edf2f7; padding: 1px 4px; border-radius: 3px;">098-765-4321</span> a.n. Poetry's
-                </p>
+              <div id="pdfPaymentAccountsList" style="display: flex; flex-direction: column; gap: 4px;">
+                <!-- Dinamis diisi lewat JS -->
               </div>
             </div>
           </div>
@@ -1549,7 +1564,7 @@
     </div>
   </div>
 
-  <script src="logo_base64.js?v=20260704_v43"></script>
-  <script src="app.js?v=20260704_v43"></script>
+  <script src="logo_base64.js?v=20260704_v49"></script>
+  <script src="app.js?v=20260704_v49"></script>
 </body>
 </html>
