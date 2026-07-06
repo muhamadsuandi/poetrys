@@ -10,7 +10,7 @@ window.onunhandledrejection = function(event) {
 const app = {
   // === CONFIGURATION DATABASE ===
   // Ganti URL di bawah ini dengan URL Web App Google Sheets Anda agar otomatis terhubung untuk semua orang!
-  DEFAULT_API_URL: 'https://script.google.com/macros/s/AKfycbw_q9LmgXLj5xfOJcXgYr0sENih__Tuto75Si0FxMZ7QvCIly5PEm73hfSYrxnmX1Pw/exec',
+  DEFAULT_API_URL: 'https://script.google.com/macros/s/AKfycbxW6jojEh_ejvcqLMHxnYFxNG3Kuu5IH7CGYpbWVxQN9Jg2T1F4D_6qhkuR1YC74VzM/exec',
 
   data: {
     menus: [],
