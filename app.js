@@ -1955,22 +1955,29 @@ const app = {
     if (guestSec) guestSec.style.display = 'block';
 
     let inv = null;
+    let apiError = null;
     
     // Try local storage first (if they are running locally/demo mode)
     const localInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
     inv = localInvoices.find(i => i.invoiceNumber == invoiceNumber || i.id == invoiceNumber);
 
     // If not local or not found, load from remote Google Sheet API
-    if (!inv && this.data.apiUrl) {
+    const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
+    if (!inv && apiUrl) {
       try {
-        const res = await fetch(`${this.data.apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${invoiceNumber}`, { credentials: 'omit' });
+        const res = await fetch(`${apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${encodeURIComponent(invoiceNumber)}`, { credentials: 'omit' });
         const json = await res.json();
         if (json.status === 'success') {
           inv = json.data;
+        } else {
+          apiError = `API merespons: "${json.message || 'Invoice tidak ditemukan di Google Sheets'}"`;
         }
       } catch (err) {
+        apiError = `Gagal terhubung ke server: ${err.message}`;
         console.error("Gagal memuat invoice dari cloud:", err);
       }
+    } else if (!inv && !apiUrl) {
+      apiError = 'API URL belum dikonfigurasi. Buka Pengaturan dan masukkan URL Google Apps Script.';
     }
 
     this.showLoading(false);
@@ -1991,11 +1998,15 @@ const app = {
       if (downloadMsg) downloadMsg.style.display = 'none';
       if (manualBlock) manualBlock.style.display = 'none';
       
+      const detailMsg = apiError
+        ? `${apiError}\n\nPastikan:\n• Invoice sudah tersimpan ke Google Sheets (bukan hanya di browser lokal)\n• URL Google Apps Script sudah benar dan sudah di-deploy ulang`
+        : `Invoice "${invoiceNumber}" tidak ditemukan. Pastikan nomor invoice benar dan data sudah disinkronkan ke Google Sheets.`;
+
       if (errBlock && errText) {
         errBlock.style.display = 'block';
-        errText.textContent = `Invoice dengan nomor "${invoiceNumber}" tidak ditemukan di database cloud. Pastikan kode invoice benar dan pastikan Anda sudah memperbarui/mendeploy ulang Apps Script di Google Sheets Anda.`;
+        errText.textContent = detailMsg;
       }
-      this.showAlert("Invoice tidak ditemukan atau link salah.", "error", "Gagal Memuat");
+      this.showAlert(`Invoice tidak ditemukan.\n${apiError || 'Cek nomor invoice dan koneksi Google Sheets.'}`, "error", "Gagal Memuat");
       return;
     }
 
