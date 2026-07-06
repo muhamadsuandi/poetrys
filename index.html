@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <!-- CSS -->
-  <link rel="stylesheet" href="style.css?v=20260704_v109">
+  <link rel="stylesheet" href="style.css?v=20260704_v111">
   
   <!-- Nav Active Override — inline to prevent cache issues -->
   <style>
@@ -124,6 +124,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- QRCode.js: generate QR code locally without CORS -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 </head>
 <body>
   <script>
@@ -1080,15 +1082,15 @@
       
       <!-- Success Icon -->
       <div id="guestDownloadSuccessIcon" style="display: none; margin-bottom: 20px;">
-        <i data-lucide="check-circle" style="width: 60px; height: 60px; color: #10b981; display: inline-block;"></i>
+        <i data-lucide="file-text" style="width: 60px; height: 60px; color: #10b981; display: inline-block;"></i>
       </div>
       
       <h2 id="guestDownloadTitle" style="color: var(--color-text); font-size: 20px; margin-bottom: 10px; font-weight: 700;">Menyiapkan Invoice Anda...</h2>
-      <p id="guestDownloadMsg" style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 25px; line-height: 1.6;">Dokumen invoice resmi sedang diunduh secara otomatis. Harap tunggu beberapa detik.</p>
+      <p id="guestDownloadMsg" style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 25px; line-height: 1.6;">Harap tunggu, sedang memuat data invoice...</p>
       
       <div id="guestManualDownloadBlock" style="display: none;">
-        <p style="font-size: 12px; color: var(--color-text-muted); margin-bottom: 15px;">Jika unduhan tidak berjalan otomatis, silakan klik tombol di bawah ini:</p>
-        <button class="btn btn-primary btn-block" id="btnGuestManualDownload" style="font-weight: 600; padding: 12px;"><i data-lucide="download" style="margin-right: 6px;"></i> Unduh PDF Sekarang</button>
+        <button class="btn btn-primary btn-block" id="btnGuestManualDownload" style="font-weight: 700; padding: 14px; font-size: 16px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;"><i data-lucide="download" style="width: 20px; height: 20px;"></i> Unduh PDF Invoice</button>
+        <p style="font-size: 11px; color: var(--color-text-muted); margin-top: 10px;">Ketuk tombol di atas untuk mengunduh invoice ke perangkat Anda.</p>
       </div>
 
       <!-- Guest Invoice Error Message (hidden by default) -->
@@ -1654,7 +1656,7 @@
         <!-- Center: QR Code Verification Box -->
         <div style="width: 140px; background: transparent; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; text-align: center;">
           <span style="font-size: 8px; text-transform: uppercase; color: #10b981; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: block;">ORIGINAL INVOICE</span>
-          <img id="pdfQrCode" src="" style="width: 76px; height: 76px; object-fit: contain; border: 1px solid #e2e8f0; padding: 2px; background: #fff;" alt="Verification QR">
+          <div id="pdfQrCode" style="width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; padding: 2px; background: #fff; box-sizing: border-box;"></div>
           <span style="font-size: 7.5px; color: #94a3b8; font-weight: 600; margin-top: 6px; display: block; line-height: 1.1;">Scan to Verify<br>Poetry's Catering</span>
         </div>
 
@@ -1712,7 +1714,7 @@
     <option value="Lebak"></option>
   </datalist>
 
-  <script src="logo_base64.js?v=20260704_v108"></script>
-  <script src="app.js?v=20260704_v108"></script>
+  <script src="logo_base64.js?v=20260704_v111"></script>
+  <script src="app.js?v=20260704_v111"></script>
 </body>
 </html>

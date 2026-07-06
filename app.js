@@ -2024,48 +2024,34 @@ const app = {
       }
     }
 
-    // Generate QR verification code on the PDF template
-    const qrText = `Poetry's Catering Authentic Invoice\nInvoice No: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nCatering Date: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrText)}`;
-    const qrImg = document.getElementById('pdfQrCode');
-    if (qrImg) {
-      fetch(qrUrl)
-        .then(response => {
-          if (!response.ok) throw new Error('Fetch QR failed');
-          return response.blob();
-        })
-        .then(blob => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            qrImg.src = reader.result;
-            // Trigger auto download once QR loaded successfully
-            setTimeout(() => {
-              triggerDownload();
-              if (spinner) spinner.style.display = 'none';
-              if (successIcon) successIcon.style.display = 'block';
-              if (downloadTitle) downloadTitle.textContent = 'Invoice Berhasil Diunduh!';
-              if (downloadMsg) downloadMsg.textContent = `File Invoice_${inv.invoiceNumber}.pdf telah disimpan secara otomatis di folder unduhan perangkat Anda.`;
-              if (manualBlock) manualBlock.style.display = 'block';
-            }, 1000);
-          };
-          reader.readAsDataURL(blob);
-        })
-        .catch(err => {
-          console.warn("Gagal memuat QR Code dengan CORS, gunakan fallback.", err);
-          qrImg.crossOrigin = "anonymous";
-          qrImg.onload = () => {
-            setTimeout(() => {
-              triggerDownload();
-              if (spinner) spinner.style.display = 'none';
-              if (successIcon) successIcon.style.display = 'block';
-              if (downloadTitle) downloadTitle.textContent = 'Invoice Berhasil Diunduh!';
-              if (downloadMsg) downloadMsg.textContent = `File Invoice_${inv.invoiceNumber}.pdf telah disimpan secara otomatis di folder unduhan perangkat Anda.`;
-              if (manualBlock) manualBlock.style.display = 'block';
-            }, 1000);
-          };
-          qrImg.src = qrUrl;
-        });
+    // Generate QR verification code locally using QRCode.js (no CORS, works on all devices)
+    const qrContainer = document.getElementById('pdfQrCode');
+    if (qrContainer) {
+      qrContainer.innerHTML = ''; // clear previous
+      const qrText = `Poetry's Catering\nInvoice: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nDate: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
+      if (typeof QRCode !== 'undefined') {
+        try {
+          new QRCode(qrContainer, {
+            text: qrText,
+            width: 72,
+            height: 72,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } catch (e) {
+          console.warn('QRCode generation failed:', e);
+        }
+      }
     }
+
+    // On mobile, auto-download is blocked by browser security (requires user gesture).
+    // Show the download button immediately — user taps it to download.
+    if (spinner) spinner.style.display = 'none';
+    if (successIcon) successIcon.style.display = 'block';
+    if (downloadTitle) downloadTitle.textContent = 'Invoice Siap Diunduh!';
+    if (downloadMsg) downloadMsg.textContent = `Tekan tombol di bawah untuk mengunduh file Invoice_${inv.invoiceNumber}.pdf ke perangkat Anda.`;
+    if (manualBlock) manualBlock.style.display = 'block';
   },
 
   populatePDFTemplate(inv) {
@@ -2280,15 +2266,31 @@ const app = {
       }
     }
 
-    // Generate Verification QR Code and wait for load
-    const qrText = `Poetry's Catering Authentic Invoice\nInvoice No: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nCatering Date: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrText)}`;
-    const qrImg = document.getElementById('pdfQrCode');
-    
+    // Generate QR verification code locally using QRCode.js (no CORS, works on all devices)
+    const qrContainer = document.getElementById('pdfQrCode');
+    if (qrContainer) {
+      qrContainer.innerHTML = ''; // clear previous
+      const qrText = `Poetry's Catering\nInvoice: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nDate: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
+      if (typeof QRCode !== 'undefined') {
+        try {
+          new QRCode(qrContainer, {
+            text: qrText,
+            width: 72,
+            height: 72,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        } catch (e) {
+          console.warn('QRCode generation failed:', e);
+        }
+      }
+    }
+
     // Simpan invoice number untuk konfirmasi cetak
     this.currentPrintInvoiceNumber = inv.invoiceNumber;
-    
-    // Helper to finish loading up to 100% and show modal
+
+    // Finish loading and show preview modal
     const completeLoad = () => {
       clearInterval(progressInterval);
       if (loadingText) loadingText.textContent = 'Menampilkan preview...';
@@ -2303,7 +2305,6 @@ const app = {
           }
         } else {
           clearInterval(finishInterval);
-          // Wait 100ms for visual satisfaction, then open
           setTimeout(() => {
             if (overlay) overlay.classList.add('hidden');
             this.openModal('pdfTemplateWrapper');
@@ -2313,27 +2314,7 @@ const app = {
       }, 15);
     };
 
-    // Convert QR Code URL to base64 to prevent canvas taint (CORS issue)
-    fetch(qrUrl)
-      .then(response => {
-        if (!response.ok) throw new Error('Fetch QR failed');
-        return response.blob();
-      })
-      .then(blob => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          qrImg.src = reader.result;
-          completeLoad();
-        };
-        reader.readAsDataURL(blob);
-      })
-      .catch(err => {
-        console.warn("Gagal memuat QR Code dengan CORS, gunakan fallback.", err);
-        qrImg.crossOrigin = "anonymous";
-        qrImg.onload = () => completeLoad();
-        qrImg.onerror = () => completeLoad();
-        qrImg.src = qrUrl;
-      });
+    completeLoad();
   },
 
   updateNotifications() {
