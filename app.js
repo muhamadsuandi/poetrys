@@ -1975,123 +1975,202 @@ const app = {
 
     this.showLoading(false);
 
-    const printArea = document.getElementById('guestInvoicePrintArea');
     const errBlock = document.getElementById('guestInvoiceError');
     const errText = document.getElementById('guestInvoiceErrorText');
+    const spinner = document.getElementById('guestDownloadSpinner');
+    const successIcon = document.getElementById('guestDownloadSuccessIcon');
+    const downloadTitle = document.getElementById('guestDownloadTitle');
+    const downloadMsg = document.getElementById('guestDownloadMsg');
+    const manualBlock = document.getElementById('guestManualDownloadBlock');
+    const downloadBtn = document.getElementById('btnGuestManualDownload');
 
     if (!inv) {
-      if (printArea) printArea.style.display = 'none';
+      if (spinner) spinner.style.display = 'none';
+      if (successIcon) successIcon.style.display = 'none';
+      if (downloadTitle) downloadTitle.style.display = 'none';
+      if (downloadMsg) downloadMsg.style.display = 'none';
+      if (manualBlock) manualBlock.style.display = 'none';
+      
       if (errBlock && errText) {
         errBlock.style.display = 'block';
         errText.textContent = `Invoice dengan nomor "${invoiceNumber}" tidak ditemukan di database cloud. Pastikan kode invoice benar dan pastikan Anda sudah memperbarui/mendeploy ulang Apps Script di Google Sheets Anda.`;
       }
       this.showAlert("Invoice tidak ditemukan atau link salah.", "error", "Gagal Memuat");
       return;
-    } else {
-      if (printArea) printArea.style.display = 'block';
-      if (errBlock) errBlock.style.display = 'none';
     }
 
-    // Populate logo in guest invoice
-    const logoImg = document.getElementById('guestInvoiceLogo');
-    if (logoImg) {
-      logoImg.src = localStorage.getItem('businessLogo') || 'logo.png';
+    if (errBlock) errBlock.style.display = 'none';
+
+    // Populate the shared PDF template
+    this.populatePDFTemplate(inv);
+
+    // Setup manual download button handler
+    const triggerDownload = () => {
+      this.generatePDF(`Invoice_${inv.invoiceNumber}.pdf`);
+    };
+
+    if (downloadBtn) {
+      downloadBtn.onclick = triggerDownload;
     }
 
-    // Populate text fields
-    document.getElementById('guestInvoiceNumber').textContent = inv.invoiceNumber;
-    document.getElementById('guestCustomerName').textContent = inv.customerName || '-';
-    document.getElementById('guestCustomerPhone').textContent = this.formatPhone(inv.customerPhone);
-    document.getElementById('guestCateringLocation').textContent = inv.cateringLocation || '-';
-    document.getElementById('guestCateringCity').textContent = inv.cateringCity || inv.CateringCity || 'Serang';
-    document.getElementById('guestCateringDate').textContent = this.formatDate(inv.cateringDate);
-    document.getElementById('guestInvoiceDateCreated').textContent = this.formatDate(inv.createdAt);
-    
-    // Status
-    const statusText = document.getElementById('guestInvoiceStatus');
-    if (statusText) {
-      statusText.textContent = inv.status;
-      if (inv.status === 'Lunas') {
-        statusText.style.color = '#10b981';
-      } else if (inv.status === 'DP / Sebagian') {
-        statusText.style.color = '#f59e0b';
+    // Set logo inside PDF template if available
+    const pdfLogoContainer = document.getElementById('pdfLogoContainer');
+    if (pdfLogoContainer) {
+      const logoB64 = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : '');
+      if (logoB64) {
+        pdfLogoContainer.innerHTML = `<img src="${logoB64}" style="max-height: 70px; display: block;" alt="Business Logo">`;
       } else {
-        statusText.style.color = '#ef4444';
+        pdfLogoContainer.innerHTML = `<h2 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--color-primary);">Poetry's Catering</h2>`;
       }
     }
 
-    // Bank Payment Info
-    const bankDetails = document.getElementById('guestPaymentAccountsText');
-    if (bankDetails) {
-      bankDetails.textContent = localStorage.getItem('paymentAccounts') || 'Transfer ke Rekening Resmi Poetry\'s Catering.';
+    // Generate QR verification code on the PDF template
+    const qrText = `Poetry's Catering Authentic Invoice\nInvoice No: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nCatering Date: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrText)}`;
+    const qrImg = document.getElementById('pdfQrCode');
+    if (qrImg) {
+      fetch(qrUrl)
+        .then(response => {
+          if (!response.ok) throw new Error('Fetch QR failed');
+          return response.blob();
+        })
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            qrImg.src = reader.result;
+            // Trigger auto download once QR loaded successfully
+            setTimeout(() => {
+              triggerDownload();
+              if (spinner) spinner.style.display = 'none';
+              if (successIcon) successIcon.style.display = 'block';
+              if (downloadTitle) downloadTitle.textContent = 'Invoice Berhasil Diunduh!';
+              if (downloadMsg) downloadMsg.textContent = `File Invoice_${inv.invoiceNumber}.pdf telah disimpan secara otomatis di folder unduhan perangkat Anda.`;
+              if (manualBlock) manualBlock.style.display = 'block';
+            }, 1000);
+          };
+          reader.readAsDataURL(blob);
+        })
+        .catch(err => {
+          console.warn("Gagal memuat QR Code dengan CORS, gunakan fallback.", err);
+          qrImg.crossOrigin = "anonymous";
+          qrImg.onload = () => {
+            setTimeout(() => {
+              triggerDownload();
+              if (spinner) spinner.style.display = 'none';
+              if (successIcon) successIcon.style.display = 'block';
+              if (downloadTitle) downloadTitle.textContent = 'Invoice Berhasil Diunduh!';
+              if (downloadMsg) downloadMsg.textContent = `File Invoice_${inv.invoiceNumber}.pdf telah disimpan secara otomatis di folder unduhan perangkat Anda.`;
+              if (manualBlock) manualBlock.style.display = 'block';
+            }, 1000);
+          };
+          qrImg.src = qrUrl;
+        });
     }
+  },
 
-    // Items table
-    const tableBody = document.getElementById('guestInvoiceTableBody');
-    tableBody.innerHTML = '';
-    let items = [];
-    try {
-      items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
-    } catch (e) {
-      console.error(e);
-    }
-
-    items.forEach(item => {
-      const row = document.createElement('tr');
-      row.style.borderBottom = '1px solid var(--color-border)';
-      row.innerHTML = `
-        <td style="padding: 10px 5px;">
-          <strong style="color: var(--color-text);">${this.escapeHTML(item.name)}</strong>
-          ${item.notes ? `<div style="font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">Catatan: ${this.escapeHTML(item.notes)}</div>` : ''}
-        </td>
-        <td style="padding: 10px 5px; text-align: center;">${item.qty}</td>
-        <td style="padding: 10px 5px; text-align: right;">${this.formatCurrency(item.price)}</td>
-        <td style="padding: 10px 5px; text-align: right; font-weight: 600;">${this.formatCurrency(item.price * item.qty)}</td>
-      `;
-      tableBody.appendChild(row);
-    });
-
-    // Subtotals and Calculations
-    const subtotal = Number(inv.subtotalAmount) || Number(inv.totalAmount) || 0;
-    const additionalFee = Number(inv.additionalFee) || 0;
-    const discountAmount = Number(inv.discountAmount) || 0;
-    const totalAmount = Number(inv.totalAmount) || 0;
-    const paidAmount = Number(inv.paidAmount) || 0;
-    const remaining = totalAmount - paidAmount;
-
-    document.getElementById('guestSubtotal').textContent = this.formatCurrency(subtotal);
-
-    const discRow = document.getElementById('guestDiscountRow');
-    if (discountAmount > 0) {
-      discRow.style.display = 'flex';
-      document.getElementById('guestDiscount').textContent = `-${this.formatCurrency(discountAmount)}`;
+  populatePDFTemplate(inv) {
+    document.getElementById('pdfCustName').textContent = inv.customerName || '-';
+    document.getElementById('pdfCustPhone').textContent = this.formatPhone(inv.customerPhone);
+    document.getElementById('pdfCatLocation').textContent = inv.cateringLocation || '-';
+    document.getElementById('pdfInvNumber').textContent = inv.invoiceNumber;
+    document.getElementById('pdfInvDate').textContent = this.formatDate(inv.createdAt);
+    document.getElementById('pdfCatDate').textContent = this.formatDate(inv.cateringDate);
+    
+    const watermark = document.getElementById('pdfStatusWatermark');
+    const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+    const remaining = Number(inv.totalAmount) - paid;
+    
+    if(inv.status === 'Lunas' || remaining <= 0) {
+      watermark.textContent = 'LUNAS';
+      watermark.style.color = 'rgba(16,185,129,0.18)';
+      watermark.style.borderColor = 'rgba(16,185,129,0.18)';
+    } else if (paid > 0) {
+      watermark.textContent = 'LUNAS SEBAGIAN';
+      watermark.style.color = 'rgba(245,158,11,0.18)';
+      watermark.style.borderColor = 'rgba(245,158,11,0.18)';
     } else {
-      discRow.style.display = 'none';
-    }
-
-    const feeRow = document.getElementById('guestAdditionalFeeRow');
-    if (additionalFee > 0) {
-      feeRow.style.display = 'flex';
-      document.getElementById('guestAdditionalFee').textContent = this.formatCurrency(additionalFee);
-    } else {
-      feeRow.style.display = 'none';
-    }
-
-    document.getElementById('guestTotalAmount').textContent = this.formatCurrency(totalAmount);
-    document.getElementById('guestPaidAmount').textContent = this.formatCurrency(paidAmount);
-    document.getElementById('guestRemainingBalance').textContent = this.formatCurrency(remaining >= 0 ? remaining : 0);
-
-    // Notes
-    const notesRow = document.getElementById('guestInvoiceNotesRow');
-    const notesText = document.getElementById('guestInvoiceNotes');
-    if (inv.notes && inv.notes.trim()) {
-      notesRow.style.display = 'block';
-      notesText.textContent = inv.notes;
-    } else {
-      notesRow.style.display = 'none';
+      watermark.textContent = 'BELUM LUNAS';
+      watermark.style.color = 'rgba(239,68,68,0.18)';
+      watermark.style.borderColor = 'rgba(239,68,68,0.18)';
     }
     
-    lucide.createIcons();
+    const pdfTbody = document.getElementById('pdfItemsTableBody');
+    pdfTbody.innerHTML = '';
+    
+    const items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+    items.forEach(item => {
+      pdfTbody.innerHTML += `
+        <tr>
+          <td style="padding: 12px 15px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 500;">${this.escapeHTML(item.name)}</td>
+          <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #475569;">${this.formatCurrency(item.price)}</td>
+          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569;">${item.qty}</td>
+          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569; font-weight: 500;">${this.escapeHTML(item.unit || 'pax')}</td>
+          <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 600;">${this.formatCurrency(item.subtotal || (item.price * item.qty))}</td>
+        </tr>
+      `;
+    });
+    
+    const finalPaid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+    const finalRemaining = Number(inv.totalAmount) - finalPaid;
+
+    const subtotalVal = Number(inv.subtotalAmount) || Number(inv.totalAmount) || 0;
+    const discType = inv.discountType || 'none';
+    const discVal = Number(inv.discountValue) || 0;
+    const discAmt = Number(inv.discountAmount) || 0;
+
+    document.getElementById('pdfSubtotal').textContent = this.formatCurrency(subtotalVal);
+    const pdfDiscRow = document.getElementById('pdfDiscountRow');
+    if (pdfDiscRow) {
+      if (discType !== 'none' && discAmt > 0) {
+        document.getElementById('pdfDiscountInfo').textContent = discType === 'percent' ? `(${discVal}%)` : '';
+        document.getElementById('pdfDiscountAmount').textContent = `- ${this.formatCurrency(discAmt)}`;
+        pdfDiscRow.style.display = 'flex';
+      } else {
+        pdfDiscRow.style.display = 'none';
+      }
+    }
+
+    const addFee = Number(inv.additionalFee) || 0;
+    const pdfAddFeeRow = document.getElementById('pdfAdditionalFeeRow');
+    if (pdfAddFeeRow) {
+      if (addFee > 0) {
+        document.getElementById('pdfAdditionalFeeAmount').textContent = this.formatCurrency(addFee);
+        pdfAddFeeRow.style.display = 'flex';
+      } else {
+        pdfAddFeeRow.style.display = 'none';
+      }
+    }
+
+    document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
+    document.getElementById('pdfPaidAmount').textContent = this.formatCurrency(finalPaid);
+    document.getElementById('pdfRemainingBalance').textContent = this.formatCurrency(finalRemaining);
+
+    // Render Dynamic Payment Accounts
+    const paymentAccounts = localStorage.getItem('paymentAccounts');
+    const paymentList = document.getElementById('pdfPaymentAccountsList');
+    const paymentContainer = document.getElementById('pdfPaymentAccountsContainer');
+    if (paymentContainer && paymentList) {
+      if (paymentAccounts && paymentAccounts.trim() !== '') {
+        paymentContainer.style.display = 'block';
+        paymentList.innerHTML = paymentAccounts.trim().split('\n').map(acc => {
+          return `<p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">${this.escapeHTML(acc.trim())}</p>`;
+        }).join('');
+      } else {
+        paymentContainer.style.display = 'none';
+      }
+    }
+
+    const pdfNotesContainer = document.getElementById('pdfNotesContainer');
+    const pdfNotes = document.getElementById('pdfNotes');
+    if (pdfNotesContainer && pdfNotes) {
+      if (inv.notes && inv.notes.trim()) {
+        pdfNotes.textContent = inv.notes;
+        pdfNotesContainer.style.display = 'block';
+      } else {
+        pdfNotesContainer.style.display = 'none';
+        pdfNotes.textContent = '';
+      }
+    }
   },
 
   sendWhatsAppReminder(id) {
@@ -2187,114 +2266,23 @@ const app = {
       }
     }, 45);
 
-    document.getElementById('pdfCustName').textContent = inv.customerName || '-';
-    document.getElementById('pdfCustPhone').textContent = this.formatPhone(inv.customerPhone);
-    document.getElementById('pdfCatLocation').textContent = inv.cateringLocation || '-';
-    document.getElementById('pdfInvNumber').textContent = inv.invoiceNumber;
-    document.getElementById('pdfInvDate').textContent = this.formatDate(inv.createdAt);
-    document.getElementById('pdfCatDate').textContent = this.formatDate(inv.cateringDate);
-    
-    const watermark = document.getElementById('pdfStatusWatermark');
-    const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
-    const remaining = Number(inv.totalAmount) - paid;
-    
-    if(inv.status === 'Lunas' || remaining <= 0) {
-      watermark.textContent = 'LUNAS';
-      watermark.style.color = 'rgba(16,185,129,0.18)';
-      watermark.style.borderColor = 'rgba(16,185,129,0.18)';
-    } else if (paid > 0) {
-      watermark.textContent = 'LUNAS SEBAGIAN';
-      watermark.style.color = 'rgba(245,158,11,0.18)';
-      watermark.style.borderColor = 'rgba(245,158,11,0.18)';
-    } else {
-      watermark.textContent = 'BELUM LUNAS';
-      watermark.style.color = 'rgba(239,68,68,0.18)';
-      watermark.style.borderColor = 'rgba(239,68,68,0.18)';
-    }
-    
-    const pdfTbody = document.getElementById('pdfItemsTableBody');
-    pdfTbody.innerHTML = '';
-    
-    const items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
-    items.forEach(item => {
-      pdfTbody.innerHTML += `
-        <tr>
-          <td style="padding: 12px 15px; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 500;">${this.escapeHTML(item.name)}</td>
-          <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #475569;">${this.formatCurrency(item.price)}</td>
-          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569;">${item.qty}</td>
-          <td style="padding: 12px 15px; text-align: center; border-bottom: 1px solid #f1f5f9; color: #475569; font-weight: 500;">${this.escapeHTML(item.unit || 'pax')}</td>
-          <td style="padding: 12px 15px; text-align: right; border-bottom: 1px solid #f1f5f9; color: #0f172a; font-weight: 600;">${this.formatCurrency(item.subtotal)}</td>
-        </tr>
-      `;
-    });
-    
-    const finalPaid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
-    const finalRemaining = Number(inv.totalAmount) - finalPaid;
+    // Populate the template fields using shared logic
+    this.populatePDFTemplate(inv);
 
-    const subtotalVal = Number(inv.subtotalAmount) || Number(inv.totalAmount) || 0;
-    const discType = inv.discountType || 'none';
-    const discVal = Number(inv.discountValue) || 0;
-    const discAmt = Number(inv.discountAmount) || 0;
-
-    document.getElementById('pdfSubtotal').textContent = this.formatCurrency(subtotalVal);
-    const pdfDiscRow = document.getElementById('pdfDiscountRow');
-    if (pdfDiscRow) {
-      if (discType !== 'none' && discAmt > 0) {
-        document.getElementById('pdfDiscountInfo').textContent = discType === 'percent' ? `(${discVal}%)` : '';
-        document.getElementById('pdfDiscountAmount').textContent = `- ${this.formatCurrency(discAmt)}`;
-        pdfDiscRow.style.display = 'flex';
+    // Set logo inside PDF template if available
+    const pdfLogoContainer = document.getElementById('pdfLogoContainer');
+    if (pdfLogoContainer) {
+      const logoB64 = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : '');
+      if (logoB64) {
+        pdfLogoContainer.innerHTML = `<img src="${logoB64}" style="max-height: 70px; display: block;" alt="Business Logo">`;
       } else {
-        pdfDiscRow.style.display = 'none';
-      }
-    }
-
-    const addFee = Number(inv.additionalFee) || 0;
-    const pdfAddFeeRow = document.getElementById('pdfAdditionalFeeRow');
-    if (pdfAddFeeRow) {
-      if (addFee > 0) {
-        document.getElementById('pdfAdditionalFeeAmount').textContent = this.formatCurrency(addFee);
-        pdfAddFeeRow.style.display = 'flex';
-      } else {
-        pdfAddFeeRow.style.display = 'none';
-      }
-    }
-
-    document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
-    document.getElementById('pdfPaidAmount').textContent = this.formatCurrency(finalPaid);
-    document.getElementById('pdfRemainingBalance').textContent = this.formatCurrency(finalRemaining);
-
-    // Render Dynamic Payment Accounts
-    const paymentAccounts = localStorage.getItem('paymentAccounts');
-    const paymentList = document.getElementById('pdfPaymentAccountsList');
-    const paymentContainer = document.getElementById('pdfPaymentAccountsContainer');
-    if (paymentContainer && paymentList) {
-      if (paymentAccounts && paymentAccounts.trim() !== '') {
-        paymentContainer.style.display = 'block';
-        paymentList.innerHTML = paymentAccounts.trim().split('\n').map(acc => {
-          return `<p style="margin: 0; font-size: 11px; color: #0f172a; font-weight: 600;">${this.escapeHTML(acc.trim())}</p>`;
-        }).join('');
-      } else {
-        paymentContainer.style.display = 'none';
-      }
-    }
-
-
-    const pdfNotesContainer = document.getElementById('pdfNotesContainer');
-    const pdfNotes = document.getElementById('pdfNotes');
-    if (pdfNotesContainer && pdfNotes) {
-      if (inv.notes && inv.notes.trim()) {
-        pdfNotes.textContent = inv.notes;
-        pdfNotesContainer.style.display = 'block';
-      } else {
-        pdfNotesContainer.style.display = 'none';
-        pdfNotes.textContent = '';
+        pdfLogoContainer.innerHTML = `<h2 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--color-primary);">Poetry's Catering</h2>`;
       }
     }
 
     // Generate Verification QR Code and wait for load
     const qrText = `Poetry's Catering Authentic Invoice\nInvoice No: ${inv.invoiceNumber}\nCustomer: ${inv.customerName || '-'}\nCatering Date: ${this.formatDate(inv.cateringDate)}\nTotal: ${this.formatCurrency(inv.totalAmount)}\nStatus: ${inv.status || 'Belum Lunas'}`;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrText)}`;
-    
     const qrImg = document.getElementById('pdfQrCode');
     
     // Simpan invoice number untuk konfirmasi cetak
@@ -3123,6 +3111,18 @@ const app = {
         this.showAlert(`Library cetak PDF belum termuat sepenuhnya.\nhtml2canvas: ${hasHtml2Canvas ? 'OK' : 'Belum termuat'}\njsPDF: ${hasJsPDF ? 'OK' : 'Belum termuat'}\nSilakan refresh halaman dan coba kembali.`, 'warning');
         return;
       }
+      const wrapper = document.getElementById('pdfTemplateWrapper');
+      let wrapperWasHidden = false;
+      let originalWrapperStyle = '';
+      if (wrapper && (wrapper.classList.contains('hidden') || window.getComputedStyle(wrapper).display === 'none')) {
+        wrapperWasHidden = true;
+        originalWrapperStyle = wrapper.getAttribute('style') || '';
+        wrapper.style.position = 'absolute';
+        wrapper.style.top = '-9999px';
+        wrapper.style.left = '-9999px';
+        wrapper.style.display = 'block';
+        wrapper.classList.remove('hidden');
+      }
 
       this.showLoading(true, 'Menyiapkan PDF...');
 
@@ -3156,6 +3156,10 @@ const app = {
         taintedImages.forEach(item => { 
           item.element.style.display = item.originalDisplay; 
         });
+        if (wrapperWasHidden && wrapper) {
+          wrapper.classList.add('hidden');
+          wrapper.setAttribute('style', originalWrapperStyle);
+        }
       };
 
       // Wait 150ms for browser DOM to actually apply the new image sources before capturing
@@ -3170,7 +3174,7 @@ const app = {
         })
           .then(canvas => {
             // Canvas is guaranteed clean and exportable
-            return canvas.toDataURL('image/png');
+            return canvas.toDataURL('image/jpeg', 0.95);
           })
           .then(imgData => {
             let pdf;
@@ -3188,7 +3192,7 @@ const app = {
             const pdfHeight = (pdfEl.offsetHeight * pdfWidth) / pdfEl.offsetWidth;
             
             try {
-              pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+              pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
             } catch (e) {
               throw new Error('Gagal menyisipkan tangkapan layar ke halaman PDF: ' + e.message);
             }
