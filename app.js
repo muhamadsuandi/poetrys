@@ -1956,28 +1956,44 @@ const app = {
 
     let inv = null;
     let apiError = null;
-    
-    // Try local storage first (if they are running locally/demo mode)
-    const localInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
-    inv = localInvoices.find(i => i.invoiceNumber == invoiceNumber || i.id == invoiceNumber);
 
-    // If not local or not found, load from remote Google Sheet API
-    const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
-    if (!inv && apiUrl) {
+    // === PRIORITY 1: Decode invoice data embedded directly in URL (most reliable, no server needed) ===
+    const urlParams2 = new URLSearchParams(window.location.search);
+    const encodedData = urlParams2.get('d');
+    if (encodedData) {
       try {
-        const res = await fetch(`${apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${encodeURIComponent(invoiceNumber)}`, { credentials: 'omit' });
-        const json = await res.json();
-        if (json.status === 'success') {
-          inv = json.data;
-        } else {
-          apiError = `API merespons: "${json.message || 'Invoice tidak ditemukan di Google Sheets'}"`;
-        }
-      } catch (err) {
-        apiError = `Gagal terhubung ke server: ${err.message}`;
-        console.error("Gagal memuat invoice dari cloud:", err);
+        const jsonStr = decodeURIComponent(atob(encodedData.replace(/-/g, '+').replace(/_/g, '/')));
+        inv = JSON.parse(jsonStr);
+      } catch (e) {
+        console.warn('Failed to decode inline invoice data:', e);
       }
-    } else if (!inv && !apiUrl) {
-      apiError = 'API URL belum dikonfigurasi. Buka Pengaturan dan masukkan URL Google Apps Script.';
+    }
+
+    // === PRIORITY 2: Try local storage (admin on same browser) ===
+    if (!inv) {
+      const localInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
+      inv = localInvoices.find(i => i.invoiceNumber == invoiceNumber || i.id == invoiceNumber);
+    }
+
+    // === PRIORITY 3: Fetch from Google Sheets API (fallback) ===
+    if (!inv) {
+      const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${encodeURIComponent(invoiceNumber)}`, { credentials: 'omit' });
+          const json = await res.json();
+          if (json.status === 'success') {
+            inv = json.data;
+          } else {
+            apiError = `API merespons: "${json.message || 'Invoice tidak ditemukan di Google Sheets'}"`;
+          }
+        } catch (err) {
+          apiError = `Gagal terhubung ke server: ${err.message}`;
+          console.error("Gagal memuat invoice dari cloud:", err);
+        }
+      } else {
+        apiError = 'API URL belum dikonfigurasi.';
+      }
     }
 
     this.showLoading(false);
@@ -2198,9 +2214,34 @@ const app = {
     // Retrieve active bank accounts from local storage settings
     const bankDetails = localStorage.getItem('paymentAccounts') || '[Nama Bank] - [No Rekening] a.n [Nama Pemilik]';
 
-    // Auto generate the online guest invoice link dynamically based on window.location
+    // Auto generate the online guest invoice link with embedded invoice data (works without Google Sheets)
     const loc = window.location;
-    const guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
+    let guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
+    try {
+      // Encode key invoice fields into URL so it works on any device without server
+      const invPayload = {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        customerName: inv.customerName,
+        customerPhone: inv.customerPhone,
+        cateringDate: inv.cateringDate,
+        cateringLocation: inv.cateringLocation,
+        items: inv.items,
+        totalAmount: inv.totalAmount,
+        paidAmount: inv.paidAmount,
+        status: inv.status,
+        notes: inv.notes,
+        createdAt: inv.createdAt,
+        discount: inv.discount,
+        discountType: inv.discountType,
+        additionalFee: inv.additionalFee
+      };
+      const encoded = btoa(encodeURIComponent(JSON.stringify(invPayload)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}&d=${encoded}`;
+    } catch (e) {
+      console.warn('Failed to encode invoice for URL:', e);
+    }
 
     // Construct beautiful message
     let message = '';
