@@ -131,6 +131,7 @@ const app = {
   // Invoice Builder State
   currentInvoice: {
     items: [],
+    paymentHistory: [],
     total: 0
   },
 
@@ -170,6 +171,7 @@ const app = {
 
   editInvoiceState: {
     items: [],
+    paymentHistory: [],
     invoiceNumber: ''
   },
 
@@ -1996,6 +1998,7 @@ const app = {
             items:            (parsed.it || []).map(i => ({ name:i.n, qty:i.q, price:i.p, unit:i.u, subtotal:i.st })),
             totalAmount:      parsed.ta || 0,
             paidAmount:       parsed.pa || 0,
+            paymentHistory:   (parsed.ph || []).map(p => ({ date:p.d, amount:p.a, method:p.m, notes:p.n })),
             status:           parsed.s  || '',
             notes:            parsed.nt || '',
             createdAt:        parsed.ca || '',
@@ -2100,6 +2103,7 @@ const app = {
             items:            expandedItems,
             totalAmount:      parsed.ta  || 0,
             paidAmount:       parsed.pa  || 0,
+            paymentHistory:   (parsed.ph || []).map(p => ({ date:p.d, amount:p.a, method:p.m, notes:p.n })),
             status:           parsed.s   || '',
             notes:            parsed.nt  || '',
             createdAt:        parsed.ca  || '',
@@ -2302,6 +2306,45 @@ const app = {
     }
 
     document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
+
+    // Render Dynamic Payment History inside PDF Summary Box
+    const pdfHistoryRows = document.getElementById('pdfPaymentHistoryRows');
+    if (pdfHistoryRows) {
+      let history = [];
+      if (inv.paymentHistory) {
+        try {
+          history = typeof inv.paymentHistory === 'string' ? JSON.parse(inv.paymentHistory) : (inv.paymentHistory || []);
+        } catch (e) {
+          console.warn('Failed to parse pdf paymentHistory:', e);
+        }
+      }
+      // Legacy compatibility bootstrap
+      if (history.length === 0 && finalPaid > 0) {
+        history.push({
+          date: inv.createdAt ? new Date(inv.createdAt).toISOString().split('T')[0] : '',
+          amount: finalPaid,
+          method: 'Transfer BCA',
+          notes: 'DP (Sistem Lama)'
+        });
+      }
+
+      if (history.length > 0) {
+        pdfHistoryRows.style.display = 'flex';
+        pdfHistoryRows.innerHTML = history.map(p => {
+          const dateStr = p.date ? this.formatDate(p.date) : '';
+          const label = `${dateStr} (${p.method}${p.notes ? ' - ' + p.notes : ''})`;
+          return `
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #64748b;">
+              <span style="font-style: italic; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">• ${this.escapeHTML(label)}</span>
+              <strong>${this.formatCurrency(p.amount)}</strong>
+            </div>
+          `;
+        }).join('');
+      } else {
+        pdfHistoryRows.style.display = 'none';
+      }
+    }
+
     document.getElementById('pdfPaidAmount').textContent = this.formatCurrency(finalPaid);
     document.getElementById('pdfRemainingBalance').textContent = this.formatCurrency(finalRemaining);
 
@@ -2390,6 +2433,12 @@ const app = {
       // Tanpa API → encode data ke URL sebagai fallback
       try {
         const rawItems = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+        let history = [];
+        if (inv.paymentHistory) {
+          try {
+            history = typeof inv.paymentHistory === 'string' ? JSON.parse(inv.paymentHistory) : (inv.paymentHistory || []);
+          } catch(err){}
+        }
         const compact = {
           n:  inv.invoiceNumber,
           cn: inv.customerName   || '',
@@ -2399,10 +2448,12 @@ const app = {
           it: rawItems.map(i => ({ n:i.name, q:i.qty, p:i.price, u:i.unit, st:i.subtotal })),
           ta: Number(inv.totalAmount)  || 0,
           pa: Number(inv.paidAmount)   || 0,
+          ph: history.map(p => ({ d:p.date, a:p.amount, m:p.method, n:p.notes })),
           s:  inv.status         || '',
           nt: inv.notes          || '',
         };
         ['cn','cp','cd','cl','nt'].forEach(k => { if (!compact[k]) delete compact[k]; });
+        if (compact.ph.length === 0) delete compact.ph;
         const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))))
           .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}&d=${encoded}`;
@@ -2663,7 +2714,14 @@ const app = {
     document.getElementById('pdfInvNumber').textContent = invNum;
     
     this.currentInvoice.items = [];
+    this.currentInvoice.paymentHistory = [];
     this.currentInvoice.additionalFee = 0;
+    
+    // Clear list and add 1 empty default payment row
+    const container = document.getElementById('createPaymentList');
+    if (container) container.innerHTML = '';
+    this.addPaymentRow('create');
+    
     this.updateInvoiceItemsTable();
   },
 
@@ -2714,14 +2772,29 @@ const app = {
     
     // Load current items to temporary state
     this.editInvoiceState.items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
-    this.editInvoiceState.invoiceNumber = inv.invoiceNumber;
-    this.editInvoiceState.subtotal = inv.subtotalAmount || inv.totalAmount || 0;
-    this.editInvoiceState.discountType = discType;
-    this.editInvoiceState.discountValue = discValue;
-    this.editInvoiceState.discountAmount = inv.discountAmount || 0;
-    this.editInvoiceState.additionalFee = inv.additionalFee || 0;
-    this.editInvoiceState.total = inv.totalAmount || 0;
     
+    // Load payment history
+    let history = [];
+    if (inv.paymentHistory) {
+      try {
+        history = typeof inv.paymentHistory === 'string' ? JSON.parse(inv.paymentHistory) : (inv.paymentHistory || []);
+      } catch (e) {
+        console.warn('Failed to parse paymentHistory:', e);
+      }
+    }
+    // Fallback: if no history but paidAmount > 0, bootstrap a single history item for compatibility
+    if (history.length === 0 && (Number(inv.paidAmount) || 0) > 0) {
+      history.push({
+        date: inv.createdAt ? new Date(inv.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        amount: Number(inv.paidAmount) || 0,
+        method: 'Transfer BCA',
+        notes: 'DP (Sistem Lama)'
+      });
+    }
+    this.editInvoiceState.paymentHistory = history;
+    this.renderPaymentRows('edit');
+    this.updatePaymentTotal('edit');
+
     this.updateEditInvoiceItemsTable();
     this.openModal('editInvoiceModal');
   },
@@ -2859,6 +2932,7 @@ const app = {
       CateringCity: document.getElementById('editInvCateringCity').value,
       cateringDate: document.getElementById('editInvCateringDate').value,
       paidAmount: paidAmount,
+      paymentHistory: JSON.stringify(this.editInvoiceState.paymentHistory),
       subtotalAmount: subtotalAmount,
       discountType: discountType,
       discountValue: discountValue,
@@ -3201,6 +3275,92 @@ const app = {
     lucide.createIcons();
   },
 
+  // Payment history management for multi-stage installments
+  addPaymentRow(target, date = '', amount = 0, method = 'Transfer BCA', notes = '') {
+    const list = target === 'create' ? this.currentInvoice.paymentHistory : this.editInvoiceState.paymentHistory;
+    const defaultDate = date || new Date().toISOString().split('T')[0];
+    list.push({
+      date: defaultDate,
+      amount: amount,
+      method: method,
+      notes: notes
+    });
+    this.renderPaymentRows(target);
+    this.updatePaymentTotal(target);
+  },
+
+  removePaymentRow(target, index) {
+    const list = target === 'create' ? this.currentInvoice.paymentHistory : this.editInvoiceState.paymentHistory;
+    list.splice(index, 1);
+    this.renderPaymentRows(target);
+    this.updatePaymentTotal(target);
+  },
+
+  updatePaymentRowData(target, index, field, value) {
+    const list = target === 'create' ? this.currentInvoice.paymentHistory : this.editInvoiceState.paymentHistory;
+    if (!list[index]) return;
+    
+    if (field === 'amount') {
+      list[index][field] = this.parseIndonesianToNumber(value) || 0;
+    } else {
+      list[index][field] = value;
+    }
+    this.updatePaymentTotal(target);
+  },
+
+  renderPaymentRows(target) {
+    const containerId = target === 'create' ? 'createPaymentList' : 'editPaymentList';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const list = target === 'create' ? this.currentInvoice.paymentHistory : this.editInvoiceState.paymentHistory;
+    container.innerHTML = '';
+
+    list.forEach((p, i) => {
+      const formattedAmount = this.formatNumberToIndonesian(p.amount);
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '8px';
+      row.style.alignItems = 'center';
+      row.style.padding = '4px 0';
+      row.innerHTML = `
+        <input type="date" value="${p.date}" onchange="app.updatePaymentRowData('${target}', ${i}, 'date', this.value)" class="form-control" style="font-size:12px; height: 36px; padding: 6px 12px; flex: 1.5; min-width:0; border-radius: 8px;">
+        <div class="currency-input-wrapper" style="flex: 2; min-width:0; margin:0; height: 36px;">
+          <span class="currency-prefix" style="font-size:12px; line-height:36px; padding:0 8px;">Rp</span>
+          <input type="text" value="${formattedAmount}" oninput="this.value = app.formatNumberToIndonesian(app.parseIndonesianToNumber(this.value)); app.updatePaymentRowData('${target}', ${i}, 'amount', this.value)" class="currency-field" style="font-size:12px; height: 34px; padding: 6px 12px 6px 28px; width:100%; box-sizing:border-box; border-radius: 8px;">
+        </div>
+        <select onchange="app.updatePaymentRowData('${target}', ${i}, 'method', this.value)" class="form-control" style="font-size:12px; height: 36px; padding: 6px 12px; flex: 1.5; min-width:0; border-radius: 8px; appearance: none; background: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23475569%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22/%3E%3C/svg%3E') no-repeat right 12px center/8px auto; background-color: var(--color-bg-container);">
+          <option value="Transfer BCA" ${p.method === 'Transfer BCA' ? 'selected' : ''}>BCA</option>
+          <option value="Transfer Mandiri" ${p.method === 'Transfer Mandiri' ? 'selected' : ''}>Mandiri</option>
+          <option value="Cash" ${p.method === 'Cash' ? 'selected' : ''}>Cash</option>
+          <option value="Lainnya" ${p.method === 'Lainnya' ? 'selected' : ''}>Lainnya</option>
+        </select>
+        <input type="text" value="${p.notes}" placeholder="Ket (ex: DP)" onblur="app.updatePaymentRowData('${target}', ${i}, 'notes', this.value)" class="form-control" style="font-size:12px; height: 36px; padding: 6px 12px; flex: 1.5; min-width:0; border-radius: 8px;">
+        <button type="button" class="btn btn-danger btn-sm" onclick="app.removePaymentRow('${target}', ${i})" style="height: 36px; width: 36px; padding: 0; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444;">
+          <i data-lucide="trash-2" style="width: 15px; height: 15px;"></i>
+        </button>
+      `;
+      container.appendChild(row);
+    });
+    
+    lucide.createIcons();
+  },
+
+  updatePaymentTotal(target) {
+    const list = target === 'create' ? this.currentInvoice.paymentHistory : this.editInvoiceState.paymentHistory;
+    const totalPaid = list.reduce((sum, p) => sum + (p.amount || 0), 0);
+    
+    if (target === 'create') {
+      document.getElementById('invPaidAmount').value = totalPaid;
+      document.getElementById('invPaidAmountText').textContent = this.formatCurrency(totalPaid);
+      this.recalcCreateInvoiceTotals();
+    } else {
+      document.getElementById('editInvPaidAmount').value = totalPaid;
+      document.getElementById('editInvPaidAmountText').textContent = this.formatCurrency(totalPaid);
+      this.recalcEditInvoiceTotals();
+    }
+  },
+
   async saveInvoice(isDraft = false) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (role !== 'admin' && role !== 'super admin') {
@@ -3262,6 +3422,7 @@ const app = {
       notes: notes,
       totalAmount: this.currentInvoice.total,
       paidAmount: paidAmount,
+      paymentHistory: JSON.stringify(this.currentInvoice.paymentHistory),
       createdAt: invDate,
       status: status
     };
@@ -5845,7 +6006,7 @@ const app = {
   },
 
   setupCurrencyInputListeners() {
-    const ids = ['invPaidAmount', 'editInvPaidAmount', 'invAdditionalFee', 'editInvAdditionalFee', 'invDiscountValue', 'editInvDiscountValue'];
+    const ids = ['invAdditionalFee', 'editInvAdditionalFee', 'invDiscountValue', 'editInvDiscountValue'];
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -5967,12 +6128,7 @@ const app = {
     if (invDiscountValue) {
       invDiscountValue.addEventListener('input', () => this.updateInvoiceItemsTable());
     }
-    const invPaidInput = document.getElementById('invPaidAmount');
-    if (invPaidInput) {
-      invPaidInput.addEventListener('input', () => this.updateInvoiceItemsTable());
-    }
-
-    // Edit Invoice Discount listeners
+    // Paid amount listeners are handled dynamically by paymentHistory inputs
     const editInvDiscountType = document.getElementById('editInvDiscountType');
     if (editInvDiscountType) {
       editInvDiscountType.addEventListener('change', () => {
@@ -5989,10 +6145,6 @@ const app = {
     const editInvDiscountValue = document.getElementById('editInvDiscountValue');
     if (editInvDiscountValue) {
       editInvDiscountValue.addEventListener('input', () => this.updateEditInvoiceItemsTable());
-    }
-    const editInvPaidInput = document.getElementById('editInvPaidAmount');
-    if (editInvPaidInput) {
-      editInvPaidInput.addEventListener('input', () => this.updateEditInvoiceItemsTable());
     }
     
     // Schedule events

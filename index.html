@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <!-- CSS -->
-  <link rel="stylesheet" href="style.css?v=20260704_v118">
+  <link rel="stylesheet" href="style.css?v=20260704_v124">
   
   <!-- Nav Active Override — inline to prevent cache issues -->
   <style>
@@ -605,16 +605,16 @@
                 <!-- Summary Section with Notes (Left) and Pricing Card (Right) -->
                 <div class="invoice-summary-wrapper" style="display: flex; gap: 20px; align-items: stretch; margin-top: 24px; flex-wrap: wrap;">
                   <!-- Left: Keterangan (Notes) -->
-                  <div class="glass" style="flex: 1; min-width: 280px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px;">
+                  <div class="glass" style="flex: 1; min-width: 280px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px; height: fit-content;">
                     <div style="display: flex; align-items: center; gap: 8px; color: var(--color-primary); font-weight: 600;">
                       <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
                       <span>Keterangan Invoice (Catatan)</span>
                     </div>
-                    <textarea id="invNotes" placeholder="Tambahkan catatan khusus untuk katering ini (misal: request pedas, alergi, jam pengiriman, keterangan menu tambahan, dll)..." style="width: 100%; flex: 1; min-height: 140px; resize: vertical; font-size: 0.88rem; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: var(--color-text); line-height: 1.5; outline: none;"></textarea>
+                    <textarea id="invNotes" placeholder="Tambahkan catatan khusus untuk katering ini (misal: request pedas, alergi, jam pengiriman, keterangan menu tambahan, dll)..." style="width: 100%; min-height: 70px; height: 80px; resize: vertical; font-size: 0.88rem; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: var(--color-text); line-height: 1.5; outline: none;"></textarea>
                   </div>
 
                   <!-- Right: Summary Card -->
-                  <div class="invoice-summary-card" style="margin-top: 0; flex: 1.5; min-width: 280px; max-width: 520px; margin-left: 0;">
+                  <div class="invoice-summary-card" style="margin-top: 0; flex: 1.5; min-width: 280px; max-width: 520px; margin-left: 0; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
                     <!-- Subtotal Row -->
                     <div class="summary-row">
                       <div class="summary-label">
@@ -634,8 +634,8 @@
                         <div class="discount-input-group">
                           <select id="invDiscountType" class="discount-select" style="flex: 1;">
                             <option value="none">Tidak</option>
-                            <option value="percent">%</option>
-                            <option value="nominal">Rp</option>
+                            <option value="percent">Persen (%)</option>
+                            <option value="nominal">Nominal (Rp)</option>
                           </select>
                           <input type="text" id="invDiscountValue" value="0" class="discount-input" style="display: none;">
                         </div>
@@ -674,19 +674,33 @@
                       <strong id="invGrandTotal" class="grand-total-value">Rp 0</strong>
                     </div>
 
-                    <!-- Uang Muka (DP) Row -->
-                    <div class="summary-row">
-                      <div class="summary-label">
-                        <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                        <span>Uang Muka / DP:</span>
+                    <!-- Riwayat Pembayaran Bertahap (Kembali ke Kanan) -->
+                    <div style="border-top: 1px dashed #e2e8f0; border-bottom: 1px dashed #e2e8f0; padding: 16px 4px; margin: 8px 0; display: flex; flex-direction: column; gap: 10px;">
+                      <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 12.5px; font-weight: 600; color: var(--color-text); display: flex; align-items: center; gap: 5px;">
+                          <i data-lucide="wallet" style="width: 15px; height: 15px; color: var(--color-primary);"></i>
+                          Riwayat Pembayaran
+                        </span>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="app.addPaymentRow('create')" style="padding: 2px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;">
+                          <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Tambah
+                        </button>
                       </div>
-                      <div class="summary-value">
-                        <div class="currency-input-wrapper">
-                          <span class="currency-prefix">Rp</span>
-                          <input type="text" id="invPaidAmount" value="0" class="currency-field">
-                        </div>
+                      <div id="createPaymentList" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Baris pembayaran dinamis -->
                       </div>
                     </div>
+
+                    <!-- Total Terbayar Row -->
+                    <div class="summary-row">
+                      <div class="summary-label">
+                        <i data-lucide="check-circle" style="width: 16px; height: 16px; color: var(--color-success);"></i>
+                        <span>Total Terbayar:</span>
+                      </div>
+                      <strong id="invPaidAmountText" class="remaining-balance-value paid-full" style="color: var(--color-success);">Rp 0</strong>
+                      <input type="hidden" id="invPaidAmount" value="0">
+                    </div>
+
+
 
                     <!-- Sisa Tagihan Row -->
                     <div class="summary-row">
@@ -1256,16 +1270,16 @@
             <!-- Summary Section with Notes (Left) and Pricing Card (Right) -->
             <div class="invoice-summary-wrapper" style="display: flex; gap: 20px; align-items: stretch; margin-top: 24px; flex-wrap: wrap;">
               <!-- Left: Keterangan (Notes) -->
-              <div class="glass" style="flex: 1; min-width: 280px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px;">
+              <div class="glass" style="flex: 1; min-width: 280px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--color-border); border-radius: 12px; height: fit-content;">
                 <div style="display: flex; align-items: center; gap: 8px; color: var(--color-primary); font-weight: 600;">
                   <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
                   <span>Keterangan Invoice (Catatan)</span>
                 </div>
-                <textarea id="editInvNotes" placeholder="Tambahkan catatan khusus untuk katering ini (misal: request pedas, alergi, jam pengiriman, keterangan menu tambahan, dll)..." style="width: 100%; flex: 1; min-height: 140px; resize: vertical; font-size: 0.88rem; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: var(--color-text); line-height: 1.5; outline: none;"></textarea>
+                <textarea id="editInvNotes" placeholder="Tambahkan catatan khusus untuk katering ini (misal: request pedas, alergi, jam pengiriman, keterangan menu tambahan, dll)..." style="width: 100%; min-height: 70px; height: 80px; resize: vertical; font-size: 0.88rem; background: rgba(0,0,0,0.15); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: var(--color-text); line-height: 1.5; outline: none;"></textarea>
               </div>
 
               <!-- Right: Summary Card -->
-              <div class="invoice-summary-card" style="margin-top: 0; flex: 1.5; min-width: 280px; max-width: 520px; margin-left: 0;">
+              <div class="invoice-summary-card" style="margin-top: 0; flex: 1.5; min-width: 280px; max-width: 520px; margin-left: 0; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
                 <!-- Subtotal Row -->
                 <div class="summary-row">
                   <div class="summary-label">
@@ -1285,8 +1299,8 @@
                     <div class="discount-input-group">
                       <select id="editInvDiscountType" class="discount-select" style="flex: 1;">
                         <option value="none">Tidak</option>
-                        <option value="percent">%</option>
-                        <option value="nominal">Rp</option>
+                        <option value="percent">Persen (%)</option>
+                        <option value="nominal">Nominal (Rp)</option>
                       </select>
                       <input type="text" id="editInvDiscountValue" value="0" class="discount-input" style="display: none;">
                     </div>
@@ -1325,18 +1339,30 @@
                   <strong id="editInvGrandTotal" class="grand-total-value">Rp 0</strong>
                 </div>
 
-                <!-- Uang Muka (DP) Row -->
+                <!-- Riwayat Pembayaran Bertahap (Kembali ke Kanan) -->
+                <div style="border-top: 1px dashed #e2e8f0; border-bottom: 1px dashed #e2e8f0; padding: 16px 4px; margin: 8px 0; display: flex; flex-direction: column; gap: 10px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--color-text); display: flex; align-items: center; gap: 5px;">
+                      <i data-lucide="wallet" style="width: 15px; height: 15px; color: var(--color-primary);"></i>
+                      Riwayat Pembayaran
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="app.addPaymentRow('edit')" style="padding: 2px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;">
+                      <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Tambah
+                    </button>
+                  </div>
+                  <div id="editPaymentList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Baris pembayaran dinamis -->
+                  </div>
+                </div>
+
+                <!-- Total Terbayar Row -->
                 <div class="summary-row">
                   <div class="summary-label">
-                    <i data-lucide="wallet" style="width: 16px; height: 16px; color: var(--color-text-muted);"></i>
-                    <span>Uang Muka / DP:</span>
+                    <i data-lucide="check-circle" style="width: 16px; height: 16px; color: var(--color-success);"></i>
+                    <span>Total Terbayar:</span>
                   </div>
-                  <div class="summary-value">
-                    <div class="currency-input-wrapper">
-                      <span class="currency-prefix">Rp</span>
-                      <input type="text" id="editInvPaidAmount" value="0" class="currency-field" required>
-                    </div>
-                  </div>
+                  <strong id="editInvPaidAmountText" class="remaining-balance-value paid-full" style="color: var(--color-success);">Rp 0</strong>
+                  <input type="hidden" id="editInvPaidAmount" value="0">
                 </div>
 
                 <!-- Sisa Tagihan Row -->
@@ -1682,8 +1708,13 @@
             <strong style="color: #0f172a;" id="pdfGrandTotal">Rp 0</strong>
           </div>
           
+          <!-- Dynamic Payment History Rows in PDF -->
+          <div id="pdfPaymentHistoryRows" style="border-top: 1px dashed #e2e8f0; padding-top: 4px; display: none; flex-direction: column; gap: 2px;">
+            <!-- Riwayat Cicilan Dinamis -->
+          </div>
+
           <div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; color: #475569; border-top: 1px dashed #e2e8f0;">
-            <span>Paid Amount (DP)</span>
+            <span style="font-weight: 600;">Total Terbayar</span>
             <strong style="color: #10b981;" id="pdfPaidAmount">Rp 0</strong>
           </div>
           
@@ -1714,7 +1745,7 @@
     <option value="Lebak"></option>
   </datalist>
 
-  <script src="logo_base64.js?v=20260704_v118"></script>
-  <script src="app.js?v=20260704_v118"></script>
+  <script src="logo_base64.js?v=20260704_v124"></script>
+  <script src="app.js?v=20260704_v124"></script>
 </body>
 </html>
