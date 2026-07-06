@@ -671,9 +671,6 @@ const app = {
   // === Navigation ===
   navigate(page) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
-    if (page === 'create-invoice') {
-      this.renderCreateInvoiceInit();
-    }
     if (page === 'users' && role !== 'super admin') {
       this.showAlert('Anda tidak memiliki akses ke Manajemen Pengguna.', 'error', 'Akses Ditolak');
       this.navigate('dashboard');
@@ -1580,7 +1577,7 @@ const app = {
     if(menu) {
       document.getElementById('menuId').value = menu.id;
       document.getElementById('menuName').value = menu.name;
-      document.getElementById('menuPrice').value = menu.price;
+      document.getElementById('menuPrice').value = this.formatNumberToIndonesian(menu.price || 0);
       document.getElementById('menuUnit').value = menu.unit || 'pax';
       document.getElementById('menuDesc').value = menu.description;
       this.openModal('menuModal');
@@ -1687,7 +1684,7 @@ const app = {
     const payload = {
       id: isUpdate ? idField : Date.now().toString(),
       name: menuName,
-      price: document.getElementById('menuPrice').value,
+      price: this.parseIndonesianToNumber(document.getElementById('menuPrice').value),
       unit: document.getElementById('menuUnit').value,
       description: document.getElementById('menuDesc').value,
       status: isDraft ? 'Draft' : 'Active'
@@ -2376,22 +2373,7 @@ const app = {
     }
   },
 
-  // Generate short link via Google Sheets (no external service needed)
-  async generateShortLink(compactPayload) {
-    const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
-    if (!apiUrl) return null;
-    try {
-      const res = await fetch(
-        `${apiUrl}?action=CREATE_SHORT_LINK&data=${encodeURIComponent(compactPayload)}`,
-        { credentials: 'omit', signal: AbortSignal.timeout(8000) }
-      );
-      const json = await res.json();
-      if (json.status === 'success' && json.code) return json.code;
-    } catch (err) {
-      console.warn('CREATE_SHORT_LINK failed:', err);
-    }
-    return null;
-  },
+
 
   async sendWhatsAppReminder(id) {
     const inv = this.data.invoices.find(i => i.id == id);
@@ -3329,11 +3311,11 @@ const app = {
           <span class="currency-prefix" style="font-size:12px; line-height:36px; padding:0 8px;">Rp</span>
           <input type="text" value="${formattedAmount}" oninput="this.value = app.formatNumberToIndonesian(app.parseIndonesianToNumber(this.value)); app.updatePaymentRowData('${target}', ${i}, 'amount', this.value)" class="currency-field" style="font-size:12px; height: 34px; padding: 6px 12px 6px 28px; width:100%; box-sizing:border-box; border-radius: 8px;">
         </div>
-        <select onchange="app.updatePaymentRowData('${target}', ${i}, 'method', this.value)" class="form-control" style="font-size:12px; height: 36px; padding: 6px 12px; flex: 1.5; min-width:0; border-radius: 8px; appearance: none; background: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23475569%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22/%3E%3C/svg%3E') no-repeat right 12px center/8px auto; background-color: var(--color-bg-container);">
-          <option value="Transfer BCA" ${p.method === 'Transfer BCA' ? 'selected' : ''}>BCA</option>
-          <option value="Transfer Mandiri" ${p.method === 'Transfer Mandiri' ? 'selected' : ''}>Mandiri</option>
-          <option value="Cash" ${p.method === 'Cash' ? 'selected' : ''}>Cash</option>
-          <option value="Lainnya" ${p.method === 'Lainnya' ? 'selected' : ''}>Lainnya</option>
+        <select onchange="app.updatePaymentRowData('${target}', ${i}, 'method', this.value)" class="form-control" style="font-size:12px; height: 36px; padding: 6px 12px; flex: 1.5; min-width:0; border-radius: 8px; appearance: none; background: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23475569%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22/%3E%3C/svg%3E') no-repeat right 12px center/8px auto; background-color: var(--color-bg-container); color: var(--color-text); border: 1px solid var(--color-border);">
+          <option value="Transfer BCA" ${p.method === 'Transfer BCA' ? 'selected' : ''} style="background-color: #1e293b; color: #ffffff;">BCA</option>
+          <option value="Transfer Mandiri" ${p.method === 'Transfer Mandiri' ? 'selected' : ''} style="background-color: #1e293b; color: #ffffff;">Mandiri</option>
+          <option value="Cash" ${p.method === 'Cash' ? 'selected' : ''} style="background-color: #1e293b; color: #ffffff;">Cash</option>
+          <option value="Lainnya" ${p.method === 'Lainnya' ? 'selected' : ''} style="background-color: #1e293b; color: #ffffff;">Lainnya</option>
         </select>
         <input type="text" value="${p.notes}" placeholder="Ket (ex: DP)" onblur="app.updatePaymentRowData('${target}', ${i}, 'notes', this.value)" class="form-control" style="font-size:12px; height: 36px; padding: 6px 12px; flex: 1.5; min-width:0; border-radius: 8px;">
         <button type="button" class="btn btn-danger btn-sm" onclick="app.removePaymentRow('${target}', ${i})" style="height: 36px; width: 36px; padding: 0; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444;">
@@ -3343,7 +3325,7 @@ const app = {
       container.appendChild(row);
     });
     
-    lucide.createIcons();
+    lucide.createIcons({ nodes: [container] });
   },
 
   updatePaymentTotal(target) {
@@ -6006,7 +5988,7 @@ const app = {
   },
 
   setupCurrencyInputListeners() {
-    const ids = ['invAdditionalFee', 'editInvAdditionalFee', 'invDiscountValue', 'editInvDiscountValue'];
+    const ids = ['invAdditionalFee', 'editInvAdditionalFee', 'invDiscountValue', 'editInvDiscountValue', 'menuPrice'];
     ids.forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
