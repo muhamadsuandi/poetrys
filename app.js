@@ -1962,8 +1962,41 @@ const app = {
     const encodedData = urlParams2.get('d');
     if (encodedData) {
       try {
-        const jsonStr = decodeURIComponent(atob(encodedData.replace(/-/g, '+').replace(/_/g, '/')));
-        inv = JSON.parse(jsonStr);
+        const b64 = encodedData.replace(/-/g, '+').replace(/_/g, '/');
+        // Support both new (efficient) and old encoding formats
+        let parsed;
+        try {
+          // New format: btoa(unescape(encodeURIComponent(json)))
+          parsed = JSON.parse(decodeURIComponent(escape(atob(b64))));
+        } catch(_) {
+          // Old format: btoa(encodeURIComponent(json))
+          parsed = JSON.parse(decodeURIComponent(atob(b64)));
+        }
+        // Expand abbreviated keys → full invoice object
+        if (parsed.n) {
+          const expandedItems = (parsed.it || []).map(i => ({
+            name: i.n, qty: i.q, price: i.p, unit: i.u, subtotal: i.st
+          }));
+          inv = {
+            invoiceNumber:    parsed.n,
+            customerName:     parsed.cn  || '',
+            customerPhone:    parsed.cp  || '',
+            cateringDate:     parsed.cd  || '',
+            cateringLocation: parsed.cl  || '',
+            items:            expandedItems,
+            totalAmount:      parsed.ta  || 0,
+            paidAmount:       parsed.pa  || 0,
+            status:           parsed.s   || '',
+            notes:            parsed.nt  || '',
+            createdAt:        parsed.ca  || '',
+            discount:         parsed.dc  || 0,
+            discountType:     parsed.dt  || 'none',
+            additionalFee:    parsed.af  || 0
+          };
+        } else {
+          // Full-key legacy format
+          inv = parsed;
+        }
       } catch (e) {
         console.warn('Failed to decode inline invoice data:', e);
       }
@@ -2186,7 +2219,50 @@ const app = {
     }
   },
 
-  sendWhatsAppReminder(id) {
+  // Shorten a long URL using free services — tries multiple providers with fallback
+  async generateShortUrl(longUrl) {
+    // Provider 1: TinyURL (free, no API key, CORS-friendly via no-cors mode → get text)
+    try {
+      const res = await fetch(
+        `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const short = (await res.text()).trim();
+        if (short.startsWith('http')) return short;
+      }
+    } catch (_) {}
+
+    // Provider 2: is.gd (free, no API key)
+    try {
+      const res = await fetch(
+        `https://is.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const short = (await res.text()).trim();
+        if (short.startsWith('http')) return short;
+      }
+    } catch (_) {}
+
+    // Provider 3: v.gd (same network as is.gd, different domain)
+    try {
+      const res = await fetch(
+        `https://v.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (res.ok) {
+        const short = (await res.text()).trim();
+        if (short.startsWith('http')) return short;
+      }
+    } catch (_) {}
+
+    // Final fallback: return original URL unchanged
+    console.warn('All URL shorteners failed, using original URL.');
+    return longUrl;
+  },
+
+  async sendWhatsAppReminder(id) {
     const inv = this.data.invoices.find(i => i.id == id);
     if (!inv) return;
 
@@ -2218,30 +2294,42 @@ const app = {
     const loc = window.location;
     let guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
     try {
-      // Encode key invoice fields into URL so it works on any device without server
-      const invPayload = {
-        id: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        customerName: inv.customerName,
-        customerPhone: inv.customerPhone,
-        cateringDate: inv.cateringDate,
-        cateringLocation: inv.cateringLocation,
-        items: inv.items,
-        totalAmount: inv.totalAmount,
-        paidAmount: inv.paidAmount,
-        status: inv.status,
-        notes: inv.notes,
-        createdAt: inv.createdAt,
-        discount: inv.discount,
-        discountType: inv.discountType,
-        additionalFee: inv.additionalFee
+      // Compact invoice with abbreviated keys (reduces JSON size ~60%)
+      const rawItems = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+      const compact = {
+        n:  inv.invoiceNumber,
+        cn: inv.customerName   || '',
+        cp: String(inv.customerPhone || ''),
+        cd: inv.cateringDate   || '',
+        cl: inv.cateringLocation || '',
+        it: rawItems.map(i => ({ n:i.name, q:i.qty, p:i.price, u:i.unit, st:i.subtotal })),
+        ta: Number(inv.totalAmount)  || 0,
+        pa: Number(inv.paidAmount)   || 0,
+        s:  inv.status         || '',
+        nt: inv.notes          || '',
+        ca: inv.createdAt      || '',
+        dc: Number(inv.discount)        || 0,
+        dt: inv.discountType   || 'none',
+        af: Number(inv.additionalFee)   || 0
       };
-      const encoded = btoa(encodeURIComponent(JSON.stringify(invPayload)))
+      // Remove empty/zero/default values to further shrink the payload
+      ['cn','cp','cd','cl','nt','ca'].forEach(k => { if (!compact[k]) delete compact[k]; });
+      ['dc','af'].forEach(k => { if (!compact[k]) delete compact[k]; });
+      if (compact.dt === 'none') delete compact.dt;
+
+      // Efficient unicode-safe base64 (avoids %XX percent-encoding bloat)
+      const json = JSON.stringify(compact);
+      const encoded = btoa(unescape(encodeURIComponent(json)))
         .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}&d=${encoded}`;
     } catch (e) {
       console.warn('Failed to encode invoice for URL:', e);
     }
+
+    // Shorten the URL automatically
+    this.showLoading(true, 'Membuat link singkat...');
+    guestInvoiceLink = await this.generateShortUrl(guestInvoiceLink);
+    this.showLoading(false);
 
     // Construct beautiful message
     let message = '';
