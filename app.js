@@ -2378,49 +2378,37 @@ const app = {
     // Retrieve active bank accounts from local storage settings
     const bankDetails = localStorage.getItem('paymentAccounts') || '[Nama Bank] - [No Rekening] a.n [Nama Pemilik]';
 
-    // Auto generate the online guest invoice link with embedded invoice data (works without Google Sheets)
+    // Auto generate the online guest invoice link
     const loc = window.location;
-    let guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
-    try {
-      // Compact invoice with abbreviated keys (reduces JSON size ~60%)
-      const rawItems = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
-      const compact = {
-        n:  inv.invoiceNumber,
-        cn: inv.customerName   || '',
-        cp: String(inv.customerPhone || ''),
-        cd: inv.cateringDate   || '',
-        cl: inv.cateringLocation || '',
-        it: rawItems.map(i => ({ n:i.name, q:i.qty, p:i.price, u:i.unit, st:i.subtotal })),
-        ta: Number(inv.totalAmount)  || 0,
-        pa: Number(inv.paidAmount)   || 0,
-        s:  inv.status         || '',
-        nt: inv.notes          || '',
-        ca: inv.createdAt      || '',
-        dc: Number(inv.discount)        || 0,
-        dt: inv.discountType   || 'none',
-        af: Number(inv.additionalFee)   || 0
-      };
-      // Remove empty/zero/default values to further shrink the payload
-      ['cn','cp','cd','cl','nt','ca'].forEach(k => { if (!compact[k]) delete compact[k]; });
-      ['dc','af'].forEach(k => { if (!compact[k]) delete compact[k]; });
-      if (compact.dt === 'none') delete compact.dt;
+    const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
+    let guestInvoiceLink;
 
-      // Efficient unicode-safe base64 (avoids %XX percent-encoding bloat)
-      const json = JSON.stringify(compact);
-      const encoded = btoa(unescape(encodeURIComponent(json)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}&d=${encoded}`;
-
-      // Try to create a short link via Apps Script (gives ?s=Abc123 format)
-      this.showLoading(true, 'Membuat link singkat...');
-      const shortCode = await this.generateShortLink(encoded);
-      this.showLoading(false);
-      if (shortCode) {
-        guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?s=${shortCode}`;
+    if (apiUrl) {
+      // API tersedia → pakai URL pendek, data diambil dari Google Sheets
+      guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
+    } else {
+      // Tanpa API → encode data ke URL sebagai fallback
+      try {
+        const rawItems = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+        const compact = {
+          n:  inv.invoiceNumber,
+          cn: inv.customerName   || '',
+          cp: String(inv.customerPhone || ''),
+          cd: inv.cateringDate   || '',
+          cl: inv.cateringLocation || '',
+          it: rawItems.map(i => ({ n:i.name, q:i.qty, p:i.price, u:i.unit, st:i.subtotal })),
+          ta: Number(inv.totalAmount)  || 0,
+          pa: Number(inv.paidAmount)   || 0,
+          s:  inv.status         || '',
+          nt: inv.notes          || '',
+        };
+        ['cn','cp','cd','cl','nt'].forEach(k => { if (!compact[k]) delete compact[k]; });
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(compact))))
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}&d=${encoded}`;
+      } catch (e) {
+        guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
       }
-    } catch (e) {
-      this.showLoading(false);
-      console.warn('Failed to encode/shorten invoice URL:', e);
     }
 
     // Construct beautiful message
