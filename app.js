@@ -1958,7 +1958,7 @@ const app = {
     
     // Try local storage first (if they are running locally/demo mode)
     const localInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
-    inv = localInvoices.find(i => i.invoiceNumber === invoiceNumber);
+    inv = localInvoices.find(i => i.invoiceNumber == invoiceNumber || i.id == invoiceNumber);
 
     // If not local or not found, load from remote Google Sheet API
     if (!inv && this.data.apiUrl) {
@@ -1975,9 +1975,21 @@ const app = {
 
     this.showLoading(false);
 
+    const printArea = document.getElementById('guestInvoicePrintArea');
+    const errBlock = document.getElementById('guestInvoiceError');
+    const errText = document.getElementById('guestInvoiceErrorText');
+
     if (!inv) {
+      if (printArea) printArea.style.display = 'none';
+      if (errBlock && errText) {
+        errBlock.style.display = 'block';
+        errText.textContent = `Invoice dengan nomor "${invoiceNumber}" tidak ditemukan di database cloud. Pastikan kode invoice benar dan pastikan Anda sudah memperbarui/mendeploy ulang Apps Script di Google Sheets Anda.`;
+      }
       this.showAlert("Invoice tidak ditemukan atau link salah.", "error", "Gagal Memuat");
       return;
+    } else {
+      if (printArea) printArea.style.display = 'block';
+      if (errBlock) errBlock.style.display = 'none';
     }
 
     // Populate logo in guest invoice

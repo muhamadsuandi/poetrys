@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <!-- CSS -->
-  <link rel="stylesheet" href="style.css?v=20260704_v99">
+  <link rel="stylesheet" href="style.css?v=20260704_v100">
   
   <!-- Nav Active Override — inline to prevent cache issues -->
   <style>
@@ -1073,6 +1073,13 @@
           </button>
         </div>
 
+        <!-- Guest Invoice Error Message -->
+        <div id="guestInvoiceError" class="glass p-6" style="display: none; text-align: center; border: 1px solid var(--color-danger); border-radius: 12px; max-width: 500px; margin: 40px auto;">
+          <i data-lucide="alert-triangle" style="width: 48px; height: 48px; color: var(--color-danger); margin-bottom: 15px; display: inline-block;"></i>
+          <h3 style="color: var(--color-danger); margin-bottom: 8px;">Gagal Memuat Invoice</h3>
+          <p id="guestInvoiceErrorText" style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 20px;">Invoice tidak ditemukan atau terjadi kesalahan koneksi.</p>
+        </div>
+
         <!-- Real visual Invoice Card (matches our print styling) -->
         <div class="glass p-8" id="guestInvoicePrintArea" style="background: var(--color-card-bg); color: var(--color-text); border: 1px solid var(--color-border); border-radius: 12px; box-shadow: var(--shadow-lg);">
           <!-- Brand Header -->
@@ -1797,7 +1804,7 @@
     <option value="Lebak"></option>
   </datalist>
 
-  <script src="logo_base64.js?v=20260704_v99"></script>
-  <script src="app.js?v=20260704_v99"></script>
+  <script src="logo_base64.js?v=20260704_v100"></script>
+  <script src="app.js?v=20260704_v100"></script>
 </body>
 </html>
