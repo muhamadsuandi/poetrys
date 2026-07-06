@@ -200,6 +200,16 @@ const app = {
 
     const urlParams = new URLSearchParams(window.location.search);
     const invoiceNum = urlParams.get('invoice') || urlParams.get('inv');
+    const shortCode  = urlParams.get('s');
+
+    if (shortCode) {
+      // Short link mode: fetch data from Google Sheets using short code
+      this.initTheme();
+      this.bindEvents();
+      this.loadShortLinkInvoice(shortCode);
+      return;
+    }
+
     if (invoiceNum) {
       this.initTheme();
       this.bindEvents();
@@ -1941,6 +1951,110 @@ const app = {
     lucide.createIcons();
   },
 
+  // Load invoice via short code (?s=Abc123) from Google Sheets ShortLinks
+  async loadShortLinkInvoice(code) {
+    this.showLoading(true, 'Memuat invoice...');
+
+    const appLayout = document.getElementById('appLayout');
+    const pageLogin = document.getElementById('pageLogin');
+    if (appLayout) appLayout.style.display = 'none';
+    if (pageLogin) pageLogin.style.display = 'none';
+    const guestSec = document.getElementById('viewGuestInvoice');
+    if (guestSec) guestSec.style.display = 'block';
+
+    const spinner     = document.getElementById('guestDownloadSpinner');
+    const successIcon = document.getElementById('guestDownloadSuccessIcon');
+    const downloadTitle = document.getElementById('guestDownloadTitle');
+    const downloadMsg   = document.getElementById('guestDownloadMsg');
+    const manualBlock   = document.getElementById('guestManualDownloadBlock');
+    const errBlock      = document.getElementById('guestInvoiceError');
+    const errText       = document.getElementById('guestInvoiceErrorText');
+    const downloadBtn   = document.getElementById('btnGuestManualDownload');
+
+    const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
+    let inv = null;
+
+    try {
+      const res = await fetch(
+        `${apiUrl}?action=GET_SHORT_LINK&code=${encodeURIComponent(code)}`,
+        { credentials: 'omit' }
+      );
+      const json = await res.json();
+      if (json.status === 'success' && json.data) {
+        // json.data is the compact base64-encoded invoice string
+        const b64 = json.data.replace(/-/g, '+').replace(/_/g, '/');
+        let parsed;
+        try { parsed = JSON.parse(decodeURIComponent(escape(atob(b64)))); }
+        catch (_) { parsed = JSON.parse(decodeURIComponent(atob(b64))); }
+        if (parsed.n) {
+          inv = {
+            invoiceNumber:    parsed.n,
+            customerName:     parsed.cn || '',
+            customerPhone:    parsed.cp || '',
+            cateringDate:     parsed.cd || '',
+            cateringLocation: parsed.cl || '',
+            items:            (parsed.it || []).map(i => ({ name:i.n, qty:i.q, price:i.p, unit:i.u, subtotal:i.st })),
+            totalAmount:      parsed.ta || 0,
+            paidAmount:       parsed.pa || 0,
+            status:           parsed.s  || '',
+            notes:            parsed.nt || '',
+            createdAt:        parsed.ca || '',
+            discount:         parsed.dc || 0,
+            discountType:     parsed.dt || 'none',
+            additionalFee:    parsed.af || 0
+          };
+        } else {
+          inv = parsed;
+        }
+      }
+    } catch (err) {
+      console.error('GET_SHORT_LINK failed:', err);
+    }
+
+    this.showLoading(false);
+
+    if (!inv) {
+      if (spinner) spinner.style.display = 'none';
+      if (errBlock && errText) {
+        errBlock.style.display = 'block';
+        errText.textContent = `Link dengan kode "${code}" tidak ditemukan atau sudah kadaluarsa. Minta link baru dari Poetry's Catering.`;
+      }
+      return;
+    }
+
+    if (errBlock) errBlock.style.display = 'none';
+    this.populatePDFTemplate(inv);
+
+    const triggerDownload = () => this.generatePDF(`Invoice_${inv.invoiceNumber}.pdf`);
+    if (downloadBtn) downloadBtn.onclick = triggerDownload;
+
+    const pdfLogoContainer = document.getElementById('pdfLogoContainer');
+    if (pdfLogoContainer) {
+      const logoB64 = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : '');
+      pdfLogoContainer.innerHTML = logoB64
+        ? `<img src="${logoB64}" style="max-height:70px;display:block;" alt="Logo">`
+        : `<h2 style="margin:0;font-size:20px;font-weight:700;color:var(--color-primary);">Poetry's Catering</h2>`;
+    }
+
+    const qrContainer = document.getElementById('pdfQrCode');
+    if (qrContainer && typeof QRCode !== 'undefined') {
+      qrContainer.innerHTML = '';
+      try {
+        new QRCode(qrContainer, {
+          text: `Poetry's Catering\nInvoice: ${inv.invoiceNumber}\nTotal: ${this.formatCurrency(inv.totalAmount)}`,
+          width: 72, height: 72, colorDark: '#000000', colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch(e) {}
+    }
+
+    if (spinner) spinner.style.display = 'none';
+    if (successIcon) successIcon.style.display = 'block';
+    if (downloadTitle) downloadTitle.textContent = 'Invoice Siap Diunduh!';
+    if (downloadMsg) downloadMsg.textContent = `Tekan tombol di bawah untuk mengunduh Invoice_${inv.invoiceNumber}.pdf`;
+    if (manualBlock) manualBlock.style.display = 'block';
+  },
+
   async loadGuestInvoice(invoiceNumber) {
     this.showLoading(true, "Memuat Invoice...");
     
@@ -2219,35 +2333,21 @@ const app = {
     }
   },
 
-  // Shorten a long URL using is.gd — direct redirect, no interstitial pages
-  async generateShortUrl(longUrl) {
-    // is.gd: free, direct redirect, no ads/steps
+  // Generate short link via Google Sheets (no external service needed)
+  async generateShortLink(compactPayload) {
+    const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
+    if (!apiUrl) return null;
     try {
       const res = await fetch(
-        `https://is.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`,
-        { signal: AbortSignal.timeout(6000) }
+        `${apiUrl}?action=CREATE_SHORT_LINK&data=${encodeURIComponent(compactPayload)}`,
+        { credentials: 'omit', signal: AbortSignal.timeout(8000) }
       );
-      if (res.ok) {
-        const short = (await res.text()).trim();
-        if (short.startsWith('http')) return short;
-      }
-    } catch (_) {}
-
-    // v.gd: same as is.gd, fallback
-    try {
-      const res = await fetch(
-        `https://v.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`,
-        { signal: AbortSignal.timeout(6000) }
-      );
-      if (res.ok) {
-        const short = (await res.text()).trim();
-        if (short.startsWith('http')) return short;
-      }
-    } catch (_) {}
-
-    // Final fallback: return original URL unchanged
-    console.warn('URL shortener unavailable, using original URL.');
-    return longUrl;
+      const json = await res.json();
+      if (json.status === 'success' && json.code) return json.code;
+    } catch (err) {
+      console.warn('CREATE_SHORT_LINK failed:', err);
+    }
+    return null;
   },
 
   async sendWhatsAppReminder(id) {
@@ -2310,14 +2410,18 @@ const app = {
       const encoded = btoa(unescape(encodeURIComponent(json)))
         .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}&d=${encoded}`;
-    } catch (e) {
-      console.warn('Failed to encode invoice for URL:', e);
-    }
 
-    // Shorten the URL automatically
-    this.showLoading(true, 'Membuat link singkat...');
-    guestInvoiceLink = await this.generateShortUrl(guestInvoiceLink);
-    this.showLoading(false);
+      // Try to create a short link via Apps Script (gives ?s=Abc123 format)
+      this.showLoading(true, 'Membuat link singkat...');
+      const shortCode = await this.generateShortLink(encoded);
+      this.showLoading(false);
+      if (shortCode) {
+        guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?s=${shortCode}`;
+      }
+    } catch (e) {
+      this.showLoading(false);
+      console.warn('Failed to encode/shorten invoice URL:', e);
+    }
 
     // Construct beautiful message
     let message = '';

@@ -245,6 +245,48 @@ function handleResponse(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // === CREATE SHORT LINK: Store compact invoice data, return 6-char code ===
+    if (action === "CREATE_SHORT_LINK") {
+      const payload = e.parameter.data || '';
+      if (!payload) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No data provided" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      // Get or create ShortLinks sheet
+      let sheet = doc.getSheetByName("ShortLinks");
+      if (!sheet) {
+        sheet = doc.insertSheet("ShortLinks");
+        sheet.appendRow(["code", "data", "created"]);
+      }
+      // Generate unique 6-char alphanumeric code
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+      let code = '';
+      for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      sheet.appendRow([code, payload, new Date().toISOString()]);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", code: code }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // === GET SHORT LINK: Retrieve invoice data by short code ===
+    if (action === "GET_SHORT_LINK") {
+      const code = e.parameter.code;
+      const sheet = doc.getSheetByName("ShortLinks");
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "ShortLinks tidak ditemukan" }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      const data = sheet.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === code) {
+          return ContentService.createTextOutput(JSON.stringify({ status: "success", data: data[i][1] }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Link tidak ditemukan atau sudah kadaluarsa" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+
     if (action === "GET_INIT_DATA") {
       const sheetsToFetch = ["Menus", "Invoices", "Schedules"];
       if (user.r === 'super admin') sheetsToFetch.push("Users"); // Only super admin gets Users data
