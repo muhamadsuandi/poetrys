@@ -137,6 +137,16 @@ function deleteCalendarEvent(eventId) {
 
 function handleResponse(e) {
   const action = e.parameter.action;
+
+  // === PING: Test endpoint to verify this version of code is deployed ===
+  if (action === 'PING') {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'ok',
+      version: 'v2-with-guest-invoice',
+      message: 'Apps Script berjalan dengan benar. GET_GUEST_INVOICE tersedia.'
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   const isWriteAction = ["ADD_ROW", "UPDATE_ROW", "DELETE_ROW"].includes(action);
   
   const lock = LockService.getScriptLock();

@@ -2219,25 +2219,13 @@ const app = {
     }
   },
 
-  // Shorten a long URL using free services — tries multiple providers with fallback
+  // Shorten a long URL using is.gd — direct redirect, no interstitial pages
   async generateShortUrl(longUrl) {
-    // Provider 1: TinyURL (free, no API key, CORS-friendly via no-cors mode → get text)
-    try {
-      const res = await fetch(
-        `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-      if (res.ok) {
-        const short = (await res.text()).trim();
-        if (short.startsWith('http')) return short;
-      }
-    } catch (_) {}
-
-    // Provider 2: is.gd (free, no API key)
+    // is.gd: free, direct redirect, no ads/steps
     try {
       const res = await fetch(
         `https://is.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`,
-        { signal: AbortSignal.timeout(5000) }
+        { signal: AbortSignal.timeout(6000) }
       );
       if (res.ok) {
         const short = (await res.text()).trim();
@@ -2245,11 +2233,11 @@ const app = {
       }
     } catch (_) {}
 
-    // Provider 3: v.gd (same network as is.gd, different domain)
+    // v.gd: same as is.gd, fallback
     try {
       const res = await fetch(
         `https://v.gd/create.php?format=simple&url=${encodeURIComponent(longUrl)}`,
-        { signal: AbortSignal.timeout(5000) }
+        { signal: AbortSignal.timeout(6000) }
       );
       if (res.ok) {
         const short = (await res.text()).trim();
@@ -2258,7 +2246,7 @@ const app = {
     } catch (_) {}
 
     // Final fallback: return original URL unchanged
-    console.warn('All URL shorteners failed, using original URL.');
+    console.warn('URL shortener unavailable, using original URL.');
     return longUrl;
   },
 
