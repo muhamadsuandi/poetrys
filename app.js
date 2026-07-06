@@ -198,6 +198,15 @@ const app = {
       this.data.apiUrl = this.DEFAULT_API_URL;
     }
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const invoiceNum = urlParams.get('invoice') || urlParams.get('inv');
+    if (invoiceNum) {
+      this.initTheme();
+      this.bindEvents();
+      this.loadGuestInvoice(invoiceNum);
+      return;
+    }
+
     this.initTheme();
     this.applyLogo();
     
@@ -210,6 +219,7 @@ const app = {
 
     lucide.createIcons();
     this.checkAuth();
+    this.initSessionTimeout();
     this.bindEvents();
 
     const today = new Date();
@@ -528,13 +538,42 @@ const app = {
       document.getElementById('pageLogin').classList.add('hidden');
       document.getElementById('appLayout').classList.remove('hidden');
       this.applyRoles();
+      if (!localStorage.getItem('lastActivityTime')) {
+        localStorage.setItem('lastActivityTime', Date.now().toString());
+      }
     } else {
       localStorage.removeItem('currentUser');
       localStorage.removeItem('sessionToken');
+      localStorage.removeItem('lastActivityTime');
       this.data.currentUser = null;
       document.getElementById('pageLogin').classList.remove('hidden');
       document.getElementById('appLayout').classList.add('hidden');
     }
+  },
+
+  initSessionTimeout() {
+    const activityEvents = ['click', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, () => {
+        if (localStorage.getItem('sessionToken')) {
+          localStorage.setItem('lastActivityTime', Date.now().toString());
+        }
+      }, { passive: true });
+    });
+
+    // Check every 10 seconds
+    setInterval(() => {
+      const token = localStorage.getItem('sessionToken');
+      if (!token) return;
+
+      const lastActivity = Number(localStorage.getItem('lastActivityTime')) || Date.now();
+      const diff = Date.now() - lastActivity;
+      const timeoutLimit = 15 * 60 * 1000; // 15 minutes in ms
+
+      if (diff >= timeoutLimit) {
+        this.logout(true);
+      }
+    }, 10000);
   },
 
   applyRoles() {
@@ -556,12 +595,16 @@ const app = {
     });
   },
 
-    async logout() {
-    if (await this.showConfirm("Apakah Anda yakin ingin keluar?", "Konfirmasi Keluar")) {
+  async logout(force = false) {
+    if (force || await this.showConfirm("Apakah Anda yakin ingin keluar?", "Konfirmasi Keluar")) {
       localStorage.removeItem('currentUser');
       localStorage.removeItem('sessionToken');
+      localStorage.removeItem('lastActivityTime');
       this.data.currentUser = null;
       this.checkAuth();
+      if (force) {
+        this.showAlert("Sesi Anda telah berakhir karena tidak ada aktivitas selama 15 menit. Silakan login kembali.", "warning");
+      }
     }
   },
 
@@ -678,20 +721,29 @@ const app = {
       if(page === 'dashboard') this.renderDashboard();
       if(page === 'menus') this.renderMenus();
       if(page === 'invoices') {
-        const today = new Date();
-        const y = today.getFullYear();
-        const m = today.getMonth();
-        const firstDayStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-        const lastDay = new Date(y, m + 1, 0).getDate();
-        const lastDayStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        // Only set default current month dates if there are no existing filters in state
+        if (!this.invoiceState.filterDateFrom && !this.invoiceState.filterDateTo) {
+          const today = new Date();
+          const y = today.getFullYear();
+          const m = today.getMonth();
+          const firstDayStr = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+          const lastDay = new Date(y, m + 1, 0).getDate();
+          const lastDayStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-        this.invoiceState.filterDateFrom = firstDayStr;
-        this.invoiceState.filterDateTo = lastDayStr;
+          this.invoiceState.filterDateFrom = firstDayStr;
+          this.invoiceState.filterDateTo = lastDayStr;
+        }
 
         const fromInput = document.getElementById('invoiceFilterDateFrom');
         const toInput = document.getElementById('invoiceFilterDateTo');
-        if (fromInput) fromInput.value = firstDayStr;
-        if (toInput) toInput.value = lastDayStr;
+        if (fromInput) fromInput.value = this.invoiceState.filterDateFrom;
+        if (toInput) toInput.value = this.invoiceState.filterDateTo;
+
+        // Restore other filters
+        const searchInput = document.getElementById('invoiceSearchText');
+        const statusInput = document.getElementById('invoiceFilterStatus');
+        if (searchInput) searchInput.value = this.invoiceState.searchQuery || '';
+        if (statusInput) statusInput.value = this.invoiceState.filterStatus || 'all';
 
         this.renderInvoices();
       }
@@ -720,12 +772,33 @@ const app = {
   },
 
   updateNavIndicator(page) {
-    // Indicator dihapus — active tab kini pakai background langsung via CSS
     const indicator = document.querySelector('.nav-indicator');
-    if (indicator) {
-      indicator.style.display = 'none';
-      indicator.style.opacity = '0';
-      indicator.style.width = '0';
+    const activeTab = document.querySelector(`.nav-tab[data-page="${page}"]`);
+    
+    if (window.innerWidth <= 768) {
+      if (indicator) {
+        indicator.style.opacity = '0';
+        indicator.style.pointerEvents = 'none';
+      }
+      return;
+    }
+
+    if (indicator && activeTab) {
+      indicator.style.pointerEvents = 'none';
+      
+      // If indicator is not yet initialized, set it instantly
+      const isFirstLoad = !indicator.style.width || indicator.style.width === '0px' || indicator.style.width === '0';
+      if (isFirstLoad) {
+        indicator.style.left = `${activeTab.offsetLeft}px`;
+        indicator.style.width = `${activeTab.offsetWidth}px`;
+        indicator.style.opacity = '1';
+        return;
+      }
+
+      // Smooth slide on subsequent page switches
+      indicator.style.opacity = '1';
+      indicator.style.left = `${activeTab.offsetLeft}px`;
+      indicator.style.width = `${activeTab.offsetWidth}px`;
     }
   },
 
@@ -806,21 +879,36 @@ const app = {
 
   async addRow(sheet, payload) {
     this.showLoading(true);
-    if (!this.data.apiUrl) {
-      // Save Local
-      const target = sheet.toLowerCase();
-      const items = JSON.parse(localStorage.getItem(target) || '[]');
+    const target = sheet.toLowerCase();
+    const items = this.data[target] || [];
+    
+    // Check for duplicates
+    if (!items.some(i => i.id == payload.id)) {
       items.push(payload);
-      localStorage.setItem(target, JSON.stringify(items));
       this.data[target] = items;
+      localStorage.setItem(target, JSON.stringify(items));
       this.updateNotifications();
-    } else {
-      // Save API
+    }
+
+    if (this.data.apiUrl) {
       try {
-        await fetch(`${this.data.apiUrl}?action=ADD_ROW&sheet=${sheet}`, { method: 'POST', credentials: 'omit', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
-        await this.loadData();
+        const res = await fetch(`${this.data.apiUrl}?action=ADD_ROW&sheet=${sheet}`, { 
+          method: 'POST', 
+          credentials: 'omit', 
+          body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) 
+        });
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          const index = items.findIndex(i => i.id == json.data.id);
+          if (index > -1) {
+            items[index] = { ...items[index], ...json.data };
+            this.data[target] = items;
+            localStorage.setItem(target, JSON.stringify(items));
+          }
+        }
       } catch(e) {
-        this.showAlert("Failed to save to database", "error");
+        console.error(e);
+        this.showAlert("Koneksi cloud gagal. Data tersimpan secara lokal dan akan disinkronkan nanti.", "warning");
       }
     }
     this.showLoading(false);
@@ -828,22 +916,35 @@ const app = {
 
   async updateRow(sheet, payload) {
     this.showLoading(true);
-    if (!this.data.apiUrl) {
-      const target = sheet.toLowerCase();
-      let items = JSON.parse(localStorage.getItem(target) || '[]');
-      const index = items.findIndex(i => i.id == payload.id);
-      if(index > -1) {
-        items[index] = payload;
-        localStorage.setItem(target, JSON.stringify(items));
-        this.data[target] = items;
-        this.updateNotifications();
-      }
-    } else {
+    const target = sheet.toLowerCase();
+    const items = this.data[target] || [];
+    const index = items.findIndex(i => i.id == payload.id);
+    if(index > -1) {
+      items[index] = payload;
+      this.data[target] = items;
+      localStorage.setItem(target, JSON.stringify(items));
+      this.updateNotifications();
+    }
+
+    if (this.data.apiUrl) {
       try {
-        await fetch(`${this.data.apiUrl}?action=UPDATE_ROW&sheet=${sheet}`, { method: 'POST', credentials: 'omit', body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) });
-        await this.loadData();
+        const res = await fetch(`${this.data.apiUrl}?action=UPDATE_ROW&sheet=${sheet}`, { 
+          method: 'POST', 
+          credentials: 'omit', 
+          body: JSON.stringify({ ...payload, token: localStorage.getItem('sessionToken') }) 
+        });
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          const idx = items.findIndex(i => i.id == json.data.id);
+          if (idx > -1) {
+            items[idx] = { ...items[idx], ...json.data };
+            this.data[target] = items;
+            localStorage.setItem(target, JSON.stringify(items));
+          }
+        }
       } catch(e) {
-        this.showAlert("Failed to update database", "error");
+        console.error(e);
+        this.showAlert("Koneksi cloud gagal. Perubahan disimpan secara lokal.", "warning");
       }
     }
     this.showLoading(false);
@@ -851,19 +952,19 @@ const app = {
 
   async deleteRow(sheet, id) {
     this.showLoading(true);
-    if (!this.data.apiUrl) {
-      const target = sheet.toLowerCase();
-      let items = JSON.parse(localStorage.getItem(target) || '[]');
-      items = items.filter(i => i.id != id);
-      localStorage.setItem(target, JSON.stringify(items));
-      this.data[target] = items;
-      this.updateNotifications();
-    } else {
+    const target = sheet.toLowerCase();
+    let items = this.data[target] || [];
+    items = items.filter(i => i.id != id);
+    this.data[target] = items;
+    localStorage.setItem(target, JSON.stringify(items));
+    this.updateNotifications();
+
+    if (this.data.apiUrl) {
       try {
         await fetch(`${this.data.apiUrl}?action=DELETE_ROW&sheet=${sheet}&id=${id}&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
-        await this.loadData();
       } catch(e) {
-        this.showAlert("Failed to delete from database", "error");
+        console.error(e);
+        this.showAlert("Gagal menghapus data dari cloud server.", "error");
       }
     }
     this.showLoading(false);
@@ -1045,16 +1146,21 @@ const app = {
     this.data.invoices.forEach(inv => {
       if (inv.cateringDate) {
         const d = this.getLocalYMD(inv.cateringDate);
-        if (!scheduleMap[d]) scheduleMap[d] = { invoice: false, booking: false, meeting: false };
+        if (!scheduleMap[d]) scheduleMap[d] = { invoice: false, booking: false, meeting: false, invoices: [], schedules: [] };
         scheduleMap[d].invoice = true;
+        scheduleMap[d].invoices.push(inv);
       }
     });
     this.data.schedules.forEach(sch => {
       if (sch.date) {
         const d = this.getLocalYMD(sch.date);
-        if (!scheduleMap[d]) scheduleMap[d] = { invoice: false, booking: false, meeting: false };
-        if (sch.type === 'Meeting') scheduleMap[d].meeting = true;
-        else scheduleMap[d].booking = true;
+        if (!scheduleMap[d]) scheduleMap[d] = { invoice: false, booking: false, meeting: false, invoices: [], schedules: [] };
+        if (sch.type === 'Meeting') {
+          scheduleMap[d].meeting = true;
+        } else {
+          scheduleMap[d].booking = true;
+        }
+        scheduleMap[d].schedules.push(sch);
       }
     });
 
@@ -1082,15 +1188,50 @@ const app = {
       }
 
       let dotsHtml = '';
-      if (ev && !isToday) {
-        dotsHtml = '<div class="dash-cal-dots">';
-        if (ev.invoice)  dotsHtml += `<span class="dash-cal-dot" style="background:var(--color-primary);"></span>`;
-        if (ev.booking)  dotsHtml += `<span class="dash-cal-dot" style="background:#38bdf8;"></span>`;
-        if (ev.meeting)  dotsHtml += `<span class="dash-cal-dot" style="background:#8b5cf6;"></span>`;
-        dotsHtml += '</div>';
+      let tooltipHtml = '';
+      if (ev) {
+        classes += ' tooltip-host';
+        
+        // Dots
+        if (!isToday) {
+          dotsHtml = '<div class="dash-cal-dots">';
+          if (ev.invoice)  dotsHtml += `<span class="dash-cal-dot" style="background:var(--color-primary);"></span>`;
+          if (ev.booking)  dotsHtml += `<span class="dash-cal-dot" style="background:#38bdf8;"></span>`;
+          if (ev.meeting)  dotsHtml += `<span class="dash-cal-dot" style="background:#8b5cf6;"></span>`;
+          dotsHtml += '</div>';
+        }
+
+        // Tooltip Content
+        let tooltipContent = `<div style="margin-bottom: 5px; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">${this.formatDate(dateStr)}</div>`;
+        const hasInvoice = ev.invoices.length > 0;
+        const hasBooking = ev.schedules.filter(s => !s.type || s.type === 'Booking').length > 0;
+        const hasMeeting = ev.schedules.filter(s => s.type === 'Meeting').length > 0;
+
+        if (hasInvoice) {
+          tooltipContent += `<div style="font-size: 11px; margin-bottom: 3px;"><span style="color: var(--color-primary)">•</span> ${ev.invoices.length} Katering</div>`;
+        }
+        if (hasBooking) {
+          tooltipContent += `<div style="font-size: 11px; margin-bottom: 3px;"><span style="color: #38bdf8">•</span> ${ev.schedules.filter(s => !s.type || s.type === 'Booking').length} Booking Umum</div>`;
+        }
+        if (hasMeeting) {
+          tooltipContent += `<div style="font-size: 11px; margin-bottom: 3px;"><span style="color: #8b5cf6">•</span> ${ev.schedules.filter(s => s.type === 'Meeting').length} Meeting</div>`;
+        }
+
+        let eventNames = [];
+        ev.invoices.forEach(inv => eventNames.push(this.escapeHTML(inv.customerName || 'Customer')));
+        ev.schedules.forEach(s => eventNames.push(this.escapeHTML(s.title || 'Event')));
+
+        if (eventNames.length > 0) {
+          tooltipContent += `<div style="font-size: 11px; color: var(--color-text-muted); margin-top: 5px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 5px;">`;
+          tooltipContent += eventNames.slice(0, 3).join(', ');
+          if (eventNames.length > 3) tooltipContent += `, dkk (+${eventNames.length - 3})`;
+          tooltipContent += `</div>`;
+        }
+
+        tooltipHtml = `<div class="tooltip-content" style="width: max-content; min-width: 150px; text-align: left; z-index: 9999;">${tooltipContent}</div>`;
       }
 
-      container.innerHTML += `<div class="${classes}">${day}${dotsHtml}</div>`;
+      container.innerHTML += `<div class="${classes}">${day}${dotsHtml}${tooltipHtml}</div>`;
     }
 
     // Fill trailing cells so grid is always complete (6 rows = 42 cells)
@@ -1701,6 +1842,7 @@ const app = {
             <td>
               <div style="display:flex; gap:4px;">
                 <button class="btn btn-secondary btn-sm" onclick="app.reprintInvoice('${inv.id}')" title="Print PDF"><i data-lucide="printer" style="width:16px;"></i></button>
+                ${inv.status !== 'Draft' ? `<button class="btn btn-sm" style="background:#25d366; color:#fff; border:none; display:inline-flex; align-items:center; justify-content:center; padding:5px 6px;" onclick="app.sendWhatsAppReminder('${inv.id}')" title="Kirim Tagihan WA"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="display:inline-block;"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.93a7.9 7.9 0 0 0 1.08 3.968L0 16l4.237-1.11A7.9 7.9 0 0 0 7.994 16c4.366 0 7.923-3.56 7.927-7.93a7.88 7.88 0 0 0-2.32-5.744zM7.994 14.59a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.69-4.982c-.193-.097-1.14-.563-1.317-.627-.177-.064-.306-.097-.436.097-.13.193-.502.628-.616.757-.115.13-.23.144-.423.048-.19-.097-.803-.296-1.53-1.002-.566-.505-.948-1.13-1.059-1.324-.11-.193-.012-.298.085-.395.087-.088.193-.225.29-.338.097-.113.13-.19.193-.317.064-.13.033-.242-.016-.339-.049-.097-.436-1.05-.597-1.442-.158-.382-.332-.33-.456-.337-.117-.006-.252-.006-.388-.006-.135 0-.355.051-.54.253-.186.202-.71.694-.71 1.693s.729 1.96 1.83 2.112c.11.015 2.132 3.257 5.163 4.568.72.312 1.28.499 1.72.639.722.23 1.38.197 1.9.12.58-.088 1.14-.563 1.317-1.082.177-.518.177-.962.124-1.05-.053-.088-.19-.13-.383-.227z"/></svg></button>` : ''}
                 ${showActions && inv.status !== 'Lunas' ? `<button class="btn btn-success btn-sm" onclick="app.markInvoicePaid('${inv.id}')" title="Tandai Lunas"><i data-lucide="check" style="width:16px;"></i></button>` : ''}
                 ${showActions ? `<button class="btn btn-secondary btn-sm" onclick="app.editInvoice('${inv.id}')" title="Edit Invoice"><i data-lucide="edit-2" style="width:16px;"></i></button>` : ''}
                 ${showActions ? `<button class="btn btn-danger btn-sm" onclick="app.deleteInvoice('${inv.id}')" title="Hapus Invoice"><i data-lucide="trash-2" style="width:16px;"></i></button>` : ''}
@@ -1797,6 +1939,208 @@ const app = {
 
     pagDiv.appendChild(btnGroup);
     lucide.createIcons();
+  },
+
+  async loadGuestInvoice(invoiceNumber) {
+    this.showLoading(true, "Memuat Invoice...");
+    
+    // Hide main layout and pageLogin since it's a guest view
+    const appLayout = document.getElementById('appLayout');
+    const pageLogin = document.getElementById('pageLogin');
+    if (appLayout) appLayout.style.display = 'none';
+    if (pageLogin) pageLogin.style.display = 'none';
+
+    // Show guest layout
+    const guestSec = document.getElementById('viewGuestInvoice');
+    if (guestSec) guestSec.style.display = 'block';
+
+    let inv = null;
+    
+    // Try local storage first (if they are running locally/demo mode)
+    const localInvoices = JSON.parse(localStorage.getItem('invoices') || '[]');
+    inv = localInvoices.find(i => i.invoiceNumber === invoiceNumber);
+
+    // If not local or not found, load from remote Google Sheet API
+    if (!inv && this.data.apiUrl) {
+      try {
+        const res = await fetch(`${this.data.apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${invoiceNumber}`, { credentials: 'omit' });
+        const json = await res.json();
+        if (json.status === 'success') {
+          inv = json.data;
+        }
+      } catch (err) {
+        console.error("Gagal memuat invoice dari cloud:", err);
+      }
+    }
+
+    this.showLoading(false);
+
+    if (!inv) {
+      this.showAlert("Invoice tidak ditemukan atau link salah.", "error", "Gagal Memuat");
+      return;
+    }
+
+    // Populate logo in guest invoice
+    const logoImg = document.getElementById('guestInvoiceLogo');
+    if (logoImg) {
+      logoImg.src = localStorage.getItem('businessLogo') || 'logo.png';
+    }
+
+    // Populate text fields
+    document.getElementById('guestInvoiceNumber').textContent = inv.invoiceNumber;
+    document.getElementById('guestCustomerName').textContent = inv.customerName || '-';
+    document.getElementById('guestCustomerPhone').textContent = this.formatPhone(inv.customerPhone);
+    document.getElementById('guestCateringLocation').textContent = inv.cateringLocation || '-';
+    document.getElementById('guestCateringCity').textContent = inv.cateringCity || inv.CateringCity || 'Serang';
+    document.getElementById('guestCateringDate').textContent = this.formatDate(inv.cateringDate);
+    document.getElementById('guestInvoiceDateCreated').textContent = this.formatDate(inv.createdAt);
+    
+    // Status
+    const statusText = document.getElementById('guestInvoiceStatus');
+    if (statusText) {
+      statusText.textContent = inv.status;
+      if (inv.status === 'Lunas') {
+        statusText.style.color = '#10b981';
+      } else if (inv.status === 'DP / Sebagian') {
+        statusText.style.color = '#f59e0b';
+      } else {
+        statusText.style.color = '#ef4444';
+      }
+    }
+
+    // Bank Payment Info
+    const bankDetails = document.getElementById('guestPaymentAccountsText');
+    if (bankDetails) {
+      bankDetails.textContent = localStorage.getItem('paymentAccounts') || 'Transfer ke Rekening Resmi Poetry\'s Catering.';
+    }
+
+    // Items table
+    const tableBody = document.getElementById('guestInvoiceTableBody');
+    tableBody.innerHTML = '';
+    let items = [];
+    try {
+      items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+    } catch (e) {
+      console.error(e);
+    }
+
+    items.forEach(item => {
+      const row = document.createElement('tr');
+      row.style.borderBottom = '1px solid var(--color-border)';
+      row.innerHTML = `
+        <td style="padding: 10px 5px;">
+          <strong style="color: var(--color-text);">${this.escapeHTML(item.name)}</strong>
+          ${item.notes ? `<div style="font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">Catatan: ${this.escapeHTML(item.notes)}</div>` : ''}
+        </td>
+        <td style="padding: 10px 5px; text-align: center;">${item.qty}</td>
+        <td style="padding: 10px 5px; text-align: right;">${this.formatCurrency(item.price)}</td>
+        <td style="padding: 10px 5px; text-align: right; font-weight: 600;">${this.formatCurrency(item.price * item.qty)}</td>
+      `;
+      tableBody.appendChild(row);
+    });
+
+    // Subtotals and Calculations
+    const subtotal = Number(inv.subtotalAmount) || Number(inv.totalAmount) || 0;
+    const additionalFee = Number(inv.additionalFee) || 0;
+    const discountAmount = Number(inv.discountAmount) || 0;
+    const totalAmount = Number(inv.totalAmount) || 0;
+    const paidAmount = Number(inv.paidAmount) || 0;
+    const remaining = totalAmount - paidAmount;
+
+    document.getElementById('guestSubtotal').textContent = this.formatCurrency(subtotal);
+
+    const discRow = document.getElementById('guestDiscountRow');
+    if (discountAmount > 0) {
+      discRow.style.display = 'flex';
+      document.getElementById('guestDiscount').textContent = `-${this.formatCurrency(discountAmount)}`;
+    } else {
+      discRow.style.display = 'none';
+    }
+
+    const feeRow = document.getElementById('guestAdditionalFeeRow');
+    if (additionalFee > 0) {
+      feeRow.style.display = 'flex';
+      document.getElementById('guestAdditionalFee').textContent = this.formatCurrency(additionalFee);
+    } else {
+      feeRow.style.display = 'none';
+    }
+
+    document.getElementById('guestTotalAmount').textContent = this.formatCurrency(totalAmount);
+    document.getElementById('guestPaidAmount').textContent = this.formatCurrency(paidAmount);
+    document.getElementById('guestRemainingBalance').textContent = this.formatCurrency(remaining >= 0 ? remaining : 0);
+
+    // Notes
+    const notesRow = document.getElementById('guestInvoiceNotesRow');
+    const notesText = document.getElementById('guestInvoiceNotes');
+    if (inv.notes && inv.notes.trim()) {
+      notesRow.style.display = 'block';
+      notesText.textContent = inv.notes;
+    } else {
+      notesRow.style.display = 'none';
+    }
+    
+    lucide.createIcons();
+  },
+
+  sendWhatsAppReminder(id) {
+    const inv = this.data.invoices.find(i => i.id == id);
+    if (!inv) return;
+
+    const phone = this.formatPhoneForWA(inv.customerPhone);
+    if (!phone) {
+      this.showAlert("Nomor telepon kustomer tidak valid atau kosong.", "warning");
+      return;
+    }
+
+    const customerName = inv.customerName || 'Kustomer';
+    const invoiceNumber = inv.invoiceNumber;
+    const cateringDate = this.formatDate(inv.cateringDate);
+    const totalAmount = this.formatCurrency(inv.totalAmount);
+    const paidAmount = this.formatCurrency(inv.paidAmount || 0);
+    const remaining = Number(inv.totalAmount) - (Number(inv.paidAmount) || 0);
+    const remainingText = this.formatCurrency(remaining >= 0 ? remaining : 0);
+
+    // Parse items list to send in text
+    let items = [];
+    try {
+      items = typeof inv.items === 'string' ? JSON.parse(inv.items) : (inv.items || []);
+    } catch(e){}
+    const menuSummary = items.map(item => `- ${item.qty}x ${item.name}`).join('\n');
+
+    // Retrieve active bank accounts from local storage settings
+    const bankDetails = localStorage.getItem('paymentAccounts') || '[Nama Bank] - [No Rekening] a.n [Nama Pemilik]';
+
+    // Auto generate the online guest invoice link dynamically based on window.location
+    const loc = window.location;
+    const guestInvoiceLink = `${loc.protocol}//${loc.host}${loc.pathname}?invoice=${invoiceNumber}`;
+
+    // Construct beautiful message
+    let message = '';
+    if (inv.status === 'Lunas' || remaining <= 0) {
+      message = `Halo Kak *${customerName}*,\n\nTerima kasih banyak atas pembayaran Anda. Berikut adalah konfirmasi pelunasan invoice katering Anda:\n\n` +
+        `* *No Invoice*: ${invoiceNumber}\n` +
+        `* *Tanggal Event*: ${cateringDate}\n` +
+        `* *Pesanan*:\n${menuSummary}\n\n` +
+        `* *Total Tagihan*: ${totalAmount}\n` +
+        `* *Status*: *LUNAS (Terbayar Penuh)*\n\n` +
+        `Detail invoice resmi berlogo dapat diakses secara online di sini:\n${guestInvoiceLink}\n\n` +
+        `Terima kasih telah mempercayakan kebutuhan konsumsi acara Anda kepada *Poetry's Catering*!`;
+    } else {
+      message = `Halo Kak *${customerName}*,\n\nKami dari *Poetry's Catering* ingin mengonfirmasi rincian tagihan pesanan katering Anda:\n\n` +
+        `* *No Invoice*: ${invoiceNumber}\n` +
+        `* *Tanggal Event*: ${cateringDate}\n` +
+        `* *Pesanan*:\n${menuSummary}\n\n` +
+        `* *Total Tagihan*: ${totalAmount}\n` +
+        `* *Sudah Dibayar (DP)*: ${paidAmount}\n` +
+        `* *Sisa Tagihan (Piutang)*: *${remainingText}*\n\n` +
+        `Pembayaran sisa tagihan dapat ditransfer ke rekening resmi kami:\n${bankDetails}\n\n` +
+        `Lihat & unduh file invoice resmi berlogo di sini:\n${guestInvoiceLink}\n\n` +
+        `Mohon mengirimkan bukti transfer jika pembayaran telah dilakukan. Terima kasih banyak!`;
+    }
+
+    // Open WhatsApp
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
   },
 
   reprintInvoice(id) {
@@ -2100,6 +2444,7 @@ const app = {
     document.getElementById('invCustomerName').value = '';
     document.getElementById('invCustomerPhone').value = '';
     document.getElementById('invCateringLocation').value = '';
+    document.getElementById('invCateringCity').value = 'Serang';
     document.getElementById('invCateringDate').value = '';
     document.getElementById('invPaidAmount').value = '0';
     document.getElementById('invAdditionalFee').value = '0';
@@ -2146,10 +2491,11 @@ const app = {
 
     document.getElementById('editInvId').value = inv.id;
     document.getElementById('editInvCustomerName').value = inv.customerName || '';
-    document.getElementById('editInvCustomerPhone').value = inv.customerPhone || '';
+    document.getElementById('editInvCustomerPhone').value = this.formatPhone(inv.customerPhone);
     document.getElementById('editInvCateringLocation').value = inv.cateringLocation || '';
-    document.getElementById('editInvPaidAmount').value = inv.paidAmount || 0;
-    document.getElementById('editInvAdditionalFee').value = inv.additionalFee || 0;
+    document.getElementById('editInvCateringCity').value = inv.cateringCity || inv.CateringCity || 'Serang';
+    document.getElementById('editInvPaidAmount').value = this.formatNumberToIndonesian(inv.paidAmount || 0);
+    document.getElementById('editInvAdditionalFee').value = this.formatNumberToIndonesian(inv.additionalFee || 0);
     document.getElementById('editInvNotes').value = inv.notes || '';
     
     document.getElementById('editInvCateringDate').value = inv.cateringDate ? this.getLocalYMD(inv.cateringDate) : '';
@@ -2161,7 +2507,7 @@ const app = {
     if (discTypeEl) discTypeEl.value = discType;
     const discValEl = document.getElementById('editInvDiscountValue');
     if (discValEl) {
-      discValEl.value = discValue;
+      discValEl.value = discType === 'nominal' ? this.formatNumberToIndonesian(discValue) : discValue;
       discValEl.style.display = discType === 'none' ? 'none' : 'inline-block';
     }
     
@@ -2294,8 +2640,8 @@ const app = {
     const discountValue = this.editInvoiceState.discountValue || 0;
     const discountAmount = this.editInvoiceState.discountAmount || 0;
     const totalAmount = this.editInvoiceState.total || 0;
-    const paidAmount = Number(document.getElementById('editInvPaidAmount').value) || 0;
-    const additionalFee = Number(document.getElementById('editInvAdditionalFee').value) || 0;
+    const paidAmount = this.parseIndonesianToNumber(document.getElementById('editInvPaidAmount').value);
+    const additionalFee = this.parseIndonesianToNumber(document.getElementById('editInvAdditionalFee').value);
     const notes = document.getElementById('editInvNotes').value.trim();
     
     let status = paidAmount >= totalAmount ? 'Lunas' : (paidAmount > 0 ? 'DP / Sebagian' : 'Belum Lunas');
@@ -2308,6 +2654,8 @@ const app = {
       customerName: document.getElementById('editInvCustomerName').value.trim(),
       customerPhone: document.getElementById('editInvCustomerPhone').value.trim(),
       cateringLocation: document.getElementById('editInvCateringLocation').value.trim(),
+      cateringCity: document.getElementById('editInvCateringCity').value,
+      CateringCity: document.getElementById('editInvCateringCity').value,
       cateringDate: document.getElementById('editInvCateringDate').value,
       paidAmount: paidAmount,
       subtotalAmount: subtotalAmount,
@@ -2484,13 +2832,13 @@ const app = {
     const discValEl = document.getElementById('invDiscountValue');
     const discLabelEl = document.getElementById('invDiscountLabel');
     const discountType = discTypeEl ? discTypeEl.value : 'none';
-    const discountValue = discValEl ? (Number(discValEl.value) || 0) : 0;
+    const discountValue = discValEl ? (discountType === 'percent' ? (Number(discValEl.value) || 0) : this.parseIndonesianToNumber(discValEl.value)) : 0;
     let discountAmount = 0;
     if (discountType === 'percent') discountAmount = Math.round(subtotal * (discountValue / 100));
     else if (discountType === 'nominal') discountAmount = discountValue;
     
     const addFeeEl = document.getElementById('invAdditionalFee');
-    const additionalFee = addFeeEl ? (Number(addFeeEl.value) || 0) : 0;
+    const additionalFee = addFeeEl ? this.parseIndonesianToNumber(addFeeEl.value) : 0;
     
     const grandTotal = Math.max(0, subtotal - discountAmount + additionalFee);
     const subtotalEl = document.getElementById('invSubtotal');
@@ -2510,7 +2858,7 @@ const app = {
     
     // Dynamic Sisa Tagihan (Remaining Balance)
     const paidInput = document.getElementById('invPaidAmount');
-    const paidAmount = paidInput ? (Number(paidInput.value) || 0) : 0;
+    const paidAmount = paidInput ? this.parseIndonesianToNumber(paidInput.value) : 0;
     const remainingBalance = Math.max(0, grandTotal - paidAmount);
     const remainingEl = document.getElementById('invRemainingBalance');
     if (remainingEl) {
@@ -2533,13 +2881,13 @@ const app = {
     const discValEl = document.getElementById('editInvDiscountValue');
     const discLabelEl = document.getElementById('editInvDiscountLabel');
     const discountType = discTypeEl ? discTypeEl.value : 'none';
-    const discountValue = discValEl ? (Number(discValEl.value) || 0) : 0;
+    const discountValue = discValEl ? (discountType === 'percent' ? (Number(discValEl.value) || 0) : this.parseIndonesianToNumber(discValEl.value)) : 0;
     let discountAmount = 0;
     if (discountType === 'percent') discountAmount = Math.round(subtotal * (discountValue / 100));
     else if (discountType === 'nominal') discountAmount = discountValue;
     
     const addFeeEl = document.getElementById('editInvAdditionalFee');
-    const additionalFee = addFeeEl ? (Number(addFeeEl.value) || 0) : 0;
+    const additionalFee = addFeeEl ? this.parseIndonesianToNumber(addFeeEl.value) : 0;
     
     const grandTotal = Math.max(0, subtotal - discountAmount + additionalFee);
     const subtotalEl = document.getElementById('editInvSubtotal');
@@ -2559,7 +2907,7 @@ const app = {
     
     // Dynamic Sisa Tagihan (Remaining Balance)
     const paidInput = document.getElementById('editInvPaidAmount');
-    const paidAmount = paidInput ? (Number(paidInput.value) || 0) : 0;
+    const paidAmount = paidInput ? this.parseIndonesianToNumber(paidInput.value) : 0;
     const remainingBalance = Math.max(0, grandTotal - paidAmount);
     const remainingEl = document.getElementById('editInvRemainingBalance');
     if (remainingEl) {
@@ -2662,10 +3010,11 @@ const app = {
     const custName = document.getElementById('invCustomerName').value.trim();
     const custPhone = document.getElementById('invCustomerPhone').value.trim();
     const catLocation = document.getElementById('invCateringLocation').value.trim();
+    const catCity = document.getElementById('invCateringCity').value;
     const catDate = document.getElementById('invCateringDate').value;
     const invDate = document.getElementById('invDateCreated').value;
-    const paidAmount = Number(document.getElementById('invPaidAmount').value) || 0;
-    const additionalFee = Number(document.getElementById('invAdditionalFee').value) || 0;
+    const paidAmount = this.parseIndonesianToNumber(document.getElementById('invPaidAmount').value);
+    const additionalFee = this.parseIndonesianToNumber(document.getElementById('invAdditionalFee').value);
     const notes = document.getElementById('invNotes').value.trim();
     
     if (isDraft) {
@@ -2700,6 +3049,8 @@ const app = {
       customerName: custName,
       customerPhone: custPhone,
       cateringLocation: catLocation,
+      cateringCity: catCity,
+      CateringCity: catCity,
       cateringDate: catDate,
       items: JSON.stringify(this.currentInvoice.items),
       subtotalAmount: this.currentInvoice.subtotal || this.currentInvoice.total,
@@ -3821,23 +4172,7 @@ const app = {
     this.renderReports();
   },
 
-  toggleReportChart() {
-    this.reportState.showChart = !this.reportState.showChart;
-    const chartCard = document.getElementById('reportChartCard');
-    const toggleBtn = document.getElementById('btnToggleReportChart');
-    
-    if (!chartCard || !toggleBtn) return;
-    
-    if (this.reportState.showChart) {
-      chartCard.classList.add('show');
-      toggleBtn.innerHTML = '<i data-lucide="pie-chart" style="width: 16px;"></i> Sembunyikan Resume Grafik';
-      this.renderReportChart();
-    } else {
-      chartCard.classList.remove('show');
-      toggleBtn.innerHTML = '<i data-lucide="pie-chart" style="width: 16px;"></i> Tampilkan Resume Grafik';
-    }
-    lucide.createIcons();
-  },
+
 
   animateValue(obj, start, end, duration, formatCurrency = false) {
     if (!obj) return;
@@ -4028,9 +4363,8 @@ const app = {
       }
     }
 
-    if (this.reportState.showChart) {
-      this.renderReportChart(monthlyGroups, sortedMonths);
-    }
+    this.renderReportChart(monthlyGroups, sortedMonths);
+    this.renderReportMap(filteredInvoices);
   },
 
   renderReportChart(monthlyGroups, sortedMonths) {
@@ -4040,8 +4374,8 @@ const app = {
     if (this.reportChartInstance) this.reportChartInstance.destroy();
 
     const isLightTheme = document.body.classList.contains('light-theme');
-    const labelColor = isLightTheme ? '#64748b' : '#94a3b8';
-    const gridColor = isLightTheme ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+    const labelColor = isLightTheme ? '#5e6d82' : '#94a3b8';
+    const gridColor = isLightTheme ? 'rgba(212, 175, 55, 0.08)' : 'rgba(255, 255, 255, 0.06)';
 
     if (!monthlyGroups || !sortedMonths) {
       monthlyGroups = {};
@@ -4070,19 +4404,45 @@ const app = {
           monthlyGroups[monthStr].totalRemaining += remaining;
         }
       });
-      sortedMonths = Object.keys(monthlyGroups).sort();
+       sortedMonths = Object.keys(monthlyGroups).sort();
     }
 
-    const labels = sortedMonths.map(mKey => {
-      const [year, month] = mKey.split('-');
-      return new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
-    });
-    
-    const paidTotals = sortedMonths.map(l => monthlyGroups[l].totalPaid || 0);
-    const unpaidTotals = sortedMonths.map(l => monthlyGroups[l].totalRemaining || 0);
+    let labels = [];
+    let paidTotals = [];
+    let unpaidTotals = [];
+
+    if (this.reportState.filterType === 'year') {
+      const year = this.reportState.selectedYear;
+      const monthNamesID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+      const monthNamesEN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      labels = (this.data.language === 'en') ? monthNamesEN : monthNamesID;
+      
+      for (let m = 1; m <= 12; m++) {
+        const mKey = `${year}-${String(m).padStart(2, '0')}`;
+        const group = monthlyGroups[mKey] || { totalPaid: 0, totalRemaining: 0 };
+        paidTotals.push(group.totalPaid);
+        unpaidTotals.push(group.totalRemaining);
+      }
+    } else {
+      labels = sortedMonths.map(mKey => {
+        const [year, month] = mKey.split('-');
+        return new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'short' });
+      });
+      paidTotals = sortedMonths.map(l => monthlyGroups[l].totalPaid || 0);
+      unpaidTotals = sortedMonths.map(l => monthlyGroups[l].totalRemaining || 0);
+    }
+
+    // Create elegant gradients
+    const gradientPaid = ctx.createLinearGradient(0, 0, 0, 240);
+    gradientPaid.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
+    gradientPaid.addColorStop(1, 'rgba(16, 185, 129, 0.00)');
+
+    const gradientUnpaid = ctx.createLinearGradient(0, 0, 0, 240);
+    gradientUnpaid.addColorStop(0, 'rgba(212, 175, 55, 0.25)');
+    gradientUnpaid.addColorStop(1, 'rgba(212, 175, 55, 0.00)');
 
     this.reportChartInstance = new Chart(ctx, {
-      type: 'bar',
+      type: 'line',
       data: {
         labels: labels,
         datasets: [
@@ -4090,17 +4450,29 @@ const app = {
             label: (this.data.language === 'en') ? 'Terbayar (Paid)' : 'Terbayar (Lunas)',
             data: paidTotals,
             borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.25)',
-            borderWidth: 1.5,
-            borderRadius: 4
+            backgroundColor: gradientPaid,
+            borderWidth: 3,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#10b981',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 7
           },
           {
             label: (this.data.language === 'en') ? 'Piutang (Receivable)' : 'Piutang (Sisa)',
             data: unpaidTotals,
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.25)',
-            borderWidth: 1.5,
-            borderRadius: 4
+            borderColor: '#d4af37',
+            backgroundColor: gradientUnpaid,
+            borderWidth: 3,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#d4af37',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 7
           }
         ]
       },
@@ -4110,20 +4482,30 @@ const app = {
         plugins: {
           legend: {
             display: true,
+            position: 'top',
             labels: {
               color: labelColor,
-              font: { family: 'Plus Jakarta Sans, sans-serif', size: 11 }
+              boxWidth: 12,
+              font: { family: 'Inter, sans-serif', size: 12, weight: '500' },
+              padding: 15
             }
           },
           tooltip: {
             mode: 'index',
             intersect: false,
+            backgroundColor: isLightTheme ? 'rgba(255, 255, 255, 0.95)' : 'rgba(15, 17, 21, 0.95)',
+            titleColor: isLightTheme ? '#1e293b' : '#ffffff',
+            bodyColor: isLightTheme ? '#5e6d82' : '#94a3b8',
+            borderColor: 'rgba(212, 175, 55, 0.25)',
+            borderWidth: 1,
+            padding: 12,
+            cornerRadius: 8,
+            titleFont: { family: 'Inter, sans-serif', size: 12, weight: '700' },
+            bodyFont: { family: 'Inter, sans-serif', size: 12 },
             callbacks: {
-              label: function(context) {
+              label: (context) => {
                 let label = context.dataset.label || '';
-                if (label) {
-                  label += ': ';
-                }
+                if (label) label += ': ';
                 if (context.parsed.y !== null) {
                   label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.parsed.y);
                 }
@@ -4134,26 +4516,259 @@ const app = {
         },
         scales: { 
           y: { 
-            stacked: true,
             beginAtZero: true, 
-            grid: { color: gridColor }, 
+            grid: { 
+              color: gridColor,
+              drawBorder: false,
+              borderDash: [5, 5]
+            }, 
             ticks: { 
               color: labelColor,
+              font: { family: 'Inter, sans-serif', size: 11 },
               callback: function(value) {
-                if (value >= 1000000) return (value / 1000000) + 'jt';
-                if (value >= 1000) return (value / 1000) + 'rb';
+                if (value >= 1000000) return (value / 1000000) + ' jt';
+                if (value >= 1000) return (value / 1000) + ' rb';
                 return value;
               }
             } 
           },
           x: { 
-            stacked: true,
             grid: { display: false }, 
-            ticks: { color: labelColor } 
+            ticks: { 
+              color: labelColor,
+              font: { family: 'Inter, sans-serif', size: 11 }
+            } 
           }
         }
       }
     });
+  },
+
+  async getCityCoordinates(cityName) {
+    const cleanName = cityName.trim();
+    const cacheKey = `geo_cache_${cleanName.toLowerCase()}`;
+    
+    // Check local storage cache
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch(e) {}
+    }
+
+    // Predefined coordinates for instant match (mostly East Java, Banten, and user requested cities)
+    const STATIC_COORDS = {
+      'surabaya': [-7.2575, 112.7521],
+      'sidoarjo': [-7.4726, 112.7126],
+      'gresik': [-7.1610, 112.6563],
+      'mojokerto': [-7.4705, 112.4401],
+      'malang': [-7.9839, 112.6214],
+      'pasuruan': [-7.6453, 112.9075],
+      'bangkalan': [-7.0455, 112.7485],
+      'rangkasbitung': [-6.3533, 106.2486],
+      'serang': [-6.1200, 106.1502],
+      'pandeglang': [-6.3084, 106.1067],
+      'cilegon': [-5.9961, 106.0270],
+      'tangerang': [-6.1783, 106.6319],
+      'tanggerang': [-6.1783, 106.6319]
+    };
+
+    const lowerName = cleanName.toLowerCase();
+    if (STATIC_COORDS[lowerName]) {
+      localStorage.setItem(cacheKey, JSON.stringify(STATIC_COORDS[lowerName]));
+      return STATIC_COORDS[lowerName];
+    }
+
+    // Dynamic search via OSM Nominatim API
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=id&q=${encodeURIComponent(cleanName)}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'PoetrysCateringDashboard/1.0' }
+      });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        localStorage.setItem(cacheKey, JSON.stringify(coords));
+        return coords;
+      }
+    } catch (err) {
+      console.warn("Geocoding failed for city:", cleanName, err);
+    }
+
+    // Default fallback coordinate (Surabaya centered)
+    return [-7.2575, 112.7521];
+  },
+
+  reportMapInstance: null,
+
+  async renderReportMap(filteredInvoices) {
+    const mapDiv = document.getElementById('reportMap');
+    if (!mapDiv) return;
+
+    // 1. Initial coordinates for standard Banten list
+    const DEFAULT_COORDS = {
+      'Serang': [-6.1200, 106.1502],
+      'Tangerang': [-6.1783, 106.6319],
+      'Tangerang Selatan': [-6.2886, 106.7179],
+      'Cilegon': [-5.9961, 106.0270],
+      'Pandeglang': [-6.3084, 106.1067],
+      'Rangkasbitung': [-6.3533, 106.2486],
+      'Lebak': [-6.3533, 106.2486]
+    };
+
+    // 2. Aggregate filtered invoices by city name
+    const cityData = {};
+
+    filteredInvoices.forEach(inv => {
+      let rawCity = (inv.cateringCity || inv.CateringCity || 'Serang').trim();
+      if (!rawCity) rawCity = 'Serang';
+      
+      // Capitalize first letter of each word
+      const formattedCity = rawCity.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+      if (!cityData[formattedCity]) {
+        cityData[formattedCity] = { name: formattedCity, totalAmount: 0, totalPaid: 0, totalRemaining: 0, eventCount: 0 };
+      }
+      
+      const paid = Number(inv.paidAmount) || (inv.status === 'Paid' || inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+      const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+
+      cityData[formattedCity].totalAmount += Number(inv.totalAmount);
+      cityData[formattedCity].totalPaid += paid;
+      cityData[formattedCity].totalRemaining += remaining;
+      cityData[formattedCity].eventCount += 1;
+    });
+
+    // 3. Setup Leaflet Map Instance
+    if (this.reportMapInstance) {
+      this.reportMapInstance.remove();
+      this.reportMapInstance = null;
+    }
+
+    // Determine initial center dynamically based on aggregated data
+    let initialCenter = [-6.1200, 106.1502]; // Serang fallback
+    const activeCityNames = Object.keys(cityData);
+    if (activeCityNames.length > 0) {
+      const firstCity = activeCityNames[0];
+      const coords = await this.getCityCoordinates(firstCity);
+      if (coords) {
+        initialCenter = coords;
+      }
+    }
+
+    this.reportMapInstance = L.map('reportMap', {
+      center: initialCenter,
+      zoom: 10,
+      zoomControl: true
+    });
+
+    // 4. Map Theme Tiles
+    const isLightTheme = document.body.classList.contains('light-theme');
+    let tileUrl = '';
+    let tileAttribution = '';
+    
+    if (isLightTheme) {
+      tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+      tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+    } else {
+      tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+      tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+    }
+
+    L.tileLayer(tileUrl, {
+      attribution: tileAttribution,
+      subdomains: 'abcd',
+      maxZoom: 20
+    }).addTo(this.reportMapInstance);
+
+    // 5. Draw Proportional Circles
+    let maxTurnover = 0;
+    Object.values(cityData).forEach(c => {
+      if (c.totalAmount > maxTurnover) maxTurnover = c.totalAmount;
+    });
+
+    const activeBounds = [];
+
+    for (const c of Object.values(cityData)) {
+      const coords = await this.getCityCoordinates(c.name);
+      if (!coords) continue;
+
+      const hasEvents = c.eventCount > 0;
+      if (hasEvents) {
+        activeBounds.push(coords);
+      }
+
+      let radius = 2500; 
+      if (maxTurnover > 0 && c.totalAmount > 0) {
+        radius += (c.totalAmount / maxTurnover) * 12000;
+      }
+
+      const color = hasEvents ? '#d4af37' : 'rgba(148, 163, 184, 0.3)';
+      const fillColor = hasEvents ? '#d4af37' : 'rgba(148, 163, 184, 0.3)';
+      const fillOpacity = hasEvents ? 0.35 : 0.05;
+      const weight = hasEvents ? 2 : 1;
+
+      const circle = L.circle(coords, {
+        color: color,
+        fillColor: fillColor,
+        fillOpacity: fillOpacity,
+        weight: weight,
+        radius: radius,
+        interactive: true
+      }).addTo(this.reportMapInstance);
+
+      let tooltipContent = `
+        <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: ${isLightTheme ? '#1e293b' : '#ffffff'}; line-height: 1.5; pointer-events: none;">
+          <div style="font-weight: 700; border-bottom: 1px solid rgba(212,175,55,0.25); padding-bottom: 4px; margin-bottom: 6px; font-size: 13px; color: var(--color-primary);">
+            Kota ${c.name}
+          </div>
+          <div style="margin-bottom: 3px;">
+            <strong>Jumlah Event:</strong> ${c.eventCount} Katering
+          </div>
+          <div style="margin-bottom: 3px;">
+            <strong>Total Omset:</strong> <span style="font-weight: 700; color: #10b981;">${this.formatCurrency(c.totalAmount)}</span>
+          </div>
+          <div style="margin-bottom: 3px;">
+            <strong>Terbayar (Lunas):</strong> ${this.formatCurrency(c.totalPaid)}
+          </div>
+          <div style="margin-bottom: 1px;">
+            <strong>Sisa Piutang:</strong> <span style="font-weight: 700; color: ${c.totalRemaining > 0 ? 'var(--color-danger)' : '#10b981'};">${this.formatCurrency(c.totalRemaining)}</span>
+          </div>
+        </div>
+      `;
+
+      circle.bindTooltip(tooltipContent, {
+        permanent: false,
+        sticky: true,
+        direction: 'auto',
+        opacity: 0.98,
+        className: 'custom-gis-tooltip'
+      });
+      
+      circle.on('mouseover', function (e) {
+        this.setStyle({
+          fillOpacity: 0.65,
+          weight: 3,
+          color: '#ffffff'
+        });
+      });
+
+      circle.on('mouseout', function (e) {
+        this.setStyle({
+          fillOpacity: fillOpacity,
+          weight: weight,
+          color: color
+        });
+      });
+    }
+
+    // Fit map bounds dynamically to show active event locations
+    if (activeBounds.length > 0) {
+      try {
+        const bounds = L.latLngBounds(activeBounds);
+        this.reportMapInstance.fitBounds(bounds, { padding: [40, 40] });
+      } catch(e) {}
+    }
   },
 
   exportReportToExcel() {
@@ -4300,6 +4915,19 @@ const app = {
     let str = phone.toString().trim();
     if (str.startsWith('8')) return '0' + str;
     return str;
+  },
+
+  formatPhoneForWA(phone) {
+    if (!phone) return '';
+    let clean = phone.toString().replace(/\D/g, ''); // Keep only digits
+    if (clean.startsWith('08')) {
+      clean = '62' + clean.slice(1);
+    } else if (clean.startsWith('8')) {
+      clean = '62' + clean;
+    } else if (clean.startsWith('6208')) {
+      clean = '628' + clean.slice(4);
+    }
+    return clean;
   },
 
   getLocalYMD(val) {
@@ -4633,6 +5261,7 @@ const app = {
             customerName,
             customerPhone,
             cateringLocation,
+            cateringCity: "Serang",
             cateringDate: dateStr,
             items,
             totalAmount,
@@ -4987,6 +5616,54 @@ const app = {
     this.showAlert("Menu katering berhasil ditambahkan ke invoice!", "success");
   },
 
+  formatNumberToIndonesian(num) {
+    if (isNaN(num) || num === null || num === undefined) return "";
+    return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(num);
+  },
+
+  parseIndonesianToNumber(str) {
+    if (!str) return 0;
+    const clean = str.toString().replace(/\D/g, "");
+    return Number(clean) || 0;
+  },
+
+  setupCurrencyInputListeners() {
+    const ids = ['invPaidAmount', 'editInvPaidAmount', 'invAdditionalFee', 'editInvAdditionalFee', 'invDiscountValue', 'editInvDiscountValue'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      el.addEventListener('input', (e) => {
+        if (e.target.id.includes('DiscountValue')) {
+          const typeEl = document.getElementById(e.target.id.replace('Value', 'Type'));
+          if (typeEl && typeEl.value === 'percent') {
+            e.target.value = e.target.value.replace(/\D/g, '');
+            if (e.target.id.startsWith('edit')) {
+              this.recalcEditInvoiceTotals();
+            } else {
+              this.recalcCreateInvoiceTotals();
+            }
+            return;
+          }
+        }
+
+        let val = e.target.value.replace(/\D/g, "");
+        if (val) {
+          const num = Number(val);
+          e.target.value = this.formatNumberToIndonesian(num);
+        } else {
+          e.target.value = "0";
+        }
+
+        if (e.target.id.startsWith('edit')) {
+          this.recalcEditInvoiceTotals();
+        } else {
+          this.recalcCreateInvoiceTotals();
+        }
+      });
+    });
+  },
+
   bindEvents() {
     // Navigation
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -4994,6 +5671,13 @@ const app = {
         e.preventDefault();
         this.navigate(e.currentTarget.dataset.page);
       });
+    });
+
+    window.addEventListener('resize', () => {
+      const activeLink = document.querySelector('.nav-tab.active');
+      if (activeLink) {
+        this.updateNavIndicator(activeLink.dataset.page);
+      }
     });
 
     // Login
@@ -5116,15 +5800,7 @@ const app = {
       btnResetFilters.addEventListener('click', () => this.resetReportFilters());
     }
 
-    const btnToggleChart = document.getElementById('btnToggleReportChart');
-    if (btnToggleChart) {
-      btnToggleChart.addEventListener('click', () => this.toggleReportChart());
-    }
 
-    const btnCloseChart = document.getElementById('btnCloseReportChart');
-    if (btnCloseChart) {
-      btnCloseChart.addEventListener('click', () => this.toggleReportChart());
-    }
 
     // Standalone Schedule Type change listener
     const schType = document.getElementById('scheduleType');
@@ -5150,6 +5826,22 @@ const app = {
         this.updateNavIndicator(activeTab.dataset.page);
       }
     });
+
+    // Auto show date picker on click of date inputs
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'date') {
+        try {
+          if (typeof e.target.showPicker === 'function') {
+            e.target.showPicker();
+          }
+        } catch (err) {
+          console.warn("showPicker is not supported or failed:", err);
+        }
+      }
+    });
+
+    // Setup currency listeners
+    this.setupCurrencyInputListeners();
   }
 };
 

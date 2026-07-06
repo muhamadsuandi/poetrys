@@ -213,6 +213,28 @@ function handleResponse(e) {
       }
     }
 
+    if (action === "GET_GUEST_INVOICE") {
+      const invNum = e.parameter.invoiceNumber;
+      const sheet = doc.getSheetByName("Invoices");
+      if (!sheet) throw new Error("Invoices sheet not found");
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0];
+      const invNumIdx = headers.indexOf("invoiceNumber");
+      
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][invNumIdx] == invNum) {
+          const rowData = {};
+          for (let j = 0; j < headers.length; j++) {
+            rowData[headers[j]] = data[i][j];
+          }
+          return ContentService.createTextOutput(JSON.stringify({ status: "success", data: rowData }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Invoice not found" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (action === "GET_INIT_DATA") {
       const sheetsToFetch = ["Menus", "Invoices", "Schedules"];
       if (user.r === 'super admin') sheetsToFetch.push("Users"); // Only super admin gets Users data
@@ -301,7 +323,7 @@ function handleResponse(e) {
       }
 
       sheet.getRange(nextRow, 1, 1, newRow.length).setValues([newRow]);
-      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Row added" }))
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Row added", data: payload }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -373,7 +395,7 @@ function handleResponse(e) {
             newRow.push(val);
           }
           sheet.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
-          return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Row updated" }))
+          return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Row updated", data: payload }))
             .setMimeType(ContentService.MimeType.JSON);
         }
       }

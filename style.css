@@ -289,39 +289,131 @@ body.light-theme .password-toggle-btn:hover {
 }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 
-/* Login Page */
+/* Login Page & Glassmorphic Card */
 .login-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at top right, rgba(212, 175, 55, 0.15), transparent 40%),
-              radial-gradient(circle at bottom left, rgba(212, 175, 55, 0.05), transparent 40%);
+  background: radial-gradient(circle at 50% 30%, rgba(212, 175, 55, 0.12), transparent 50%),
+              #0f1115;
+  transition: background-color 0.3s ease;
+  padding: 1rem;
 }
+
+body.light-theme .login-page {
+  background: radial-gradient(circle at 50% 30%, rgba(212, 175, 55, 0.18), transparent 50%),
+              #f8fafc;
+}
+
 .login-card {
   width: 100%;
-  max-width: 400px;
-  padding: 2.5rem;
+  max-width: 440px;
+  padding: 3rem 2.5rem;
+  background: rgba(26, 29, 36, 0.7) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(212, 175, 55, 0.18) !important;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5),
+              0 0 25px rgba(212, 175, 55, 0.04);
+  transition: all 0.3s ease;
 }
+
+body.light-theme .login-card {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(212, 175, 55, 0.25) !important;
+  box-shadow: 0 12px 40px 0 rgba(15, 23, 42, 0.08),
+              0 0 25px rgba(212, 175, 55, 0.06);
+}
+
+.login-card:hover {
+  border-color: rgba(212, 175, 55, 0.3) !important;
+  box-shadow: 0 16px 48px 0 rgba(0, 0, 0, 0.55),
+              0 0 35px rgba(212, 175, 55, 0.08);
+}
+
+body.light-theme .login-card:hover {
+  border-color: rgba(212, 175, 55, 0.4) !important;
+  box-shadow: 0 16px 48px 0 rgba(15, 23, 42, 0.12),
+              0 0 35px rgba(212, 175, 55, 0.1);
+}
+
 .brand-title {
   font-family: var(--font-serif);
-  font-size: 2rem;
+  font-size: 2.2rem;
   color: var(--color-primary);
   text-align: center;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 10px rgba(212, 175, 55, 0.1);
 }
+
 .subtitle {
   text-align: center;
   color: var(--color-text-muted);
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.5px;
 }
+
+/* Custom inputs inside login card */
+.login-card .form-group input {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: var(--color-text) !important;
+  transition: all 0.3s ease !important;
+  outline: none !important;
+  font-size: 0.9rem !important;
+  font-weight: 500 !important;
+}
+
+body.light-theme .login-card .form-group input {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
+}
+
+.login-card .form-group input:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.15) !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+}
+
+body.light-theme .login-card .form-group input:focus {
+  background: #ffffff !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+}
+
+.login-card .btn-primary {
+  background: linear-gradient(135deg, #d4af37, #b89218) !important;
+  border: none !important;
+  color: #0f1115 !important;
+  cursor: pointer;
+  transition: all 0.3s ease !important;
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2) !important;
+  letter-spacing: 0.5px;
+}
+
+.login-card .btn-primary:hover {
+  background: linear-gradient(135deg, #e5c358, #d4af37) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.35) !important;
+}
+
+.login-card .btn-primary:active {
+  transform: translateY(0);
+}
+
 .login-footer {
-  margin-top: 1.5rem;
+  margin-top: 2rem;
   text-align: center;
-  font-size: 0.875rem;
+  font-size: 0.78rem;
   color: var(--color-text-muted);
   padding-top: 1.5rem;
   border-top: 1px solid var(--color-border);
+  line-height: 1.6;
 }
 .error-text {
   color: var(--color-danger);
@@ -831,29 +923,29 @@ body.light-theme .password-toggle-btn:hover {
    Light Theme Styling (Eye-friendly Slate/Gold Theme)
    ========================================================================== */
 body.light-theme {
-  --color-bg: #f8fafc; /* Soft Slate 50 */
+  --color-bg: #f7f6f3; /* Elegant Warm Alabaster */
   --color-surface: #ffffff; /* Clean white */
-  --color-surface-hover: #f1f5f9; /* Slate 100 */
-  --color-text: #0f172a; /* Slate 900 */
-  --color-text-muted: #64748b; /* Slate 500 */
-  --color-border: rgba(15, 23, 42, 0.08);
-  --color-tooltip-title: #0f172a;
+  --color-surface-hover: #faf9f6; /* Soft cream hover */
+  --color-text: #1e293b; /* Slate 800 - softer readability than deep black */
+  --color-text-muted: #5e6d82; /* Warm Slate 500 */
+  --color-border: rgba(212, 175, 55, 0.16); /* Warm luxury gold border */
+  --color-tooltip-title: #1e293b;
 }
 
 body.light-theme .glass {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.8) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--color-border);
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+  border: 1px solid var(--color-border) !important;
+  box-shadow: 0 8px 30px rgba(212, 175, 55, 0.04), 0 4px 15px rgba(0, 0, 0, 0.02) !important;
 }
 
 body.light-theme .glass-dark {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(250, 248, 245, 0.95) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid var(--color-border);
-  box-shadow: 4px 0 20px -2px rgba(15, 23, 42, 0.05);
+  border-right: 1px solid var(--color-border) !important;
+  box-shadow: 4px 0 25px rgba(212, 175, 55, 0.03) !important;
 }
 
 body.light-theme input[type="text"],
@@ -1179,7 +1271,9 @@ body.light-theme .navbar-tabs {
   height: calc(100% - 8px) !important;
   background: var(--color-primary) !important;
   border-radius: 8px !important;
-  transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  transition: left 0.5s cubic-bezier(0.76, 0, 0.24, 1), 
+              width 0.5s cubic-bezier(0.76, 0, 0.24, 1), 
+              opacity 0.25s ease !important;
   z-index: 1 !important;
   box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2) !important;
 }
@@ -1192,8 +1286,8 @@ body.light-theme .navbar-tabs {
   color: var(--color-text-muted) !important;
   border-radius: 8px !important;
   font-size: 13px !important;
-  font-weight: 500 !important;
-  transition: color 0.25s ease !important;
+  font-weight: 600 !important;
+  transition: color 0.5s cubic-bezier(0.76, 0, 0.24, 1) !important;
   text-decoration: none !important;
   white-space: nowrap !important;
   position: relative !important;
@@ -1214,10 +1308,10 @@ body.light-theme .nav-tab:hover {
 }
 
 .nav-tab.active {
-  background: var(--color-primary) !important;
-  color: #000 !important;
-  font-weight: 700 !important;
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.25) !important;
+  background: transparent !important;
+  color: #0f1115 !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
 }
 
 .navbar-right {
@@ -1648,11 +1742,6 @@ body.light-theme .table-responsive::-webkit-scrollbar-thumb {
 }
 body.light-theme .invoice-section-box {
   background: rgba(0, 0, 0, 0.01);
-}
-#invPaidAmount {
-  width: 150px !important;
-  padding: 4px 8px !important;
-  display: inline-block !important;
 }
 
 @media (max-width: 1024px) {
@@ -2474,11 +2563,12 @@ body.light-theme .discount-input-group {
   border: none !important;
   color: var(--color-text) !important;
   padding: 0 20px 0 4px !important;
-  width: 75px !important;
   font-size: 0.8rem !important;
   cursor: pointer;
   height: 100% !important;
   font-weight: 600 !important;
+  flex: 1 !important;
+  min-width: 0 !important;
 }
 
 .discount-input {
@@ -2487,12 +2577,14 @@ body.light-theme .discount-input-group {
   border-left: 1px solid var(--color-border) !important;
   color: var(--color-text) !important;
   padding: 0 8px !important;
-  width: 90px !important;
   font-size: 0.8rem !important;
   border-radius: 0 !important;
   height: 100% !important;
   text-align: right;
   font-weight: 600 !important;
+  flex: 1.5 !important;
+  min-width: 0 !important;
+  width: 0 !important;
 }
 
 .discount-input:focus {
@@ -2555,7 +2647,9 @@ body.light-theme .currency-prefix {
   padding: 0 10px !important;
   font-size: 0.85rem !important;
   font-weight: 600 !important;
-  width: 100% !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  width: 0 !important;
   height: 100% !important;
   border-radius: 0 !important;
   text-align: right;
@@ -2701,28 +2795,35 @@ body.light-theme .grand-total-row {
 }
 
 /* Stabilize Summary Card Rows to support up to Rp 999.999.999 */
-.summary-row .summary-value {
-  width: 210px !important;
-  min-width: 210px !important;
-  justify-content: flex-end !important;
-  text-align: right !important;
-  font-size: 0.9rem !important;
+.summary-row .summary-value,
+.summary-row .grand-total-value,
+.discount-amount-label,
+.remaining-balance-value {
+  width: 175px !important;
+  min-width: 175px !important;
+  max-width: 175px !important;
   flex-shrink: 0 !important;
+  text-align: right !important;
+  justify-content: flex-end !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.currency-input-wrapper,
+.discount-input-group {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  flex-shrink: 0 !important;
+  overflow: hidden !important;
+}
+
+.summary-row .summary-value {
+  font-size: 0.9rem !important;
 }
 
 .summary-row .grand-total-value {
-  width: 210px !important;
-  min-width: 210px !important;
-  text-align: right !important;
-  justify-content: flex-end !important;
   font-size: 1.1rem !important;
-  flex-shrink: 0 !important;
-}
-
-.currency-input-wrapper {
-  width: 200px !important;
-  min-width: 200px !important;
-  flex-shrink: 0 !important;
 }
 
 /* Adjust sizes for small screens */
@@ -2741,9 +2842,63 @@ body.light-theme .grand-total-row {
   }
   .summary-row .summary-value,
   .summary-row .grand-total-value,
-  .currency-input-wrapper {
+  .discount-amount-label,
+  .remaining-balance-value {
     width: 160px !important;
     min-width: 160px !important;
+    max-width: 160px !important;
+  }
+}
+
+@media (max-width: 850px) {
+  .invoice-summary-wrapper {
+    flex-direction: column !important;
+  }
+  .invoice-summary-wrapper > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .summary-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 12px 16px !important;
+  }
+  .summary-row::before {
+    display: none !important;
+  }
+  .summary-row > *:first-child {
+    order: 1 !important;
+    width: 100% !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+  }
+  .summary-row > *:last-child {
+    order: 2 !important;
+    width: 100% !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+  }
+  .summary-row .summary-value,
+  .summary-row .grand-total-value,
+  .currency-input-wrapper,
+  .discount-input-group,
+  .discount-amount-label,
+  .remaining-balance-value {
+    width: 100% !important;
+    min-width: 100% !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+  .currency-field {
+    width: 100% !important;
+  }
+  .invoice-summary-card {
+    max-width: 100% !important;
   }
 }
 
@@ -3051,6 +3206,31 @@ body.light-theme .autocomplete-suggestion-item {
     color: #000000 !important;
     display: block !important;
     page-break-inside: avoid !important;
+  }
+
+  /* Guest Invoice View Print Overrides */
+  #viewGuestInvoice {
+    display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  #guestInvoicePrintArea {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .no-print {
+    display: none !important;
   }
 
   /* Keep status watermark printed nicely in light mode */
