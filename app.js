@@ -12,6 +12,9 @@ const app = {
   // Ganti URL di bawah ini dengan URL Web App Google Sheets Anda agar otomatis terhubung untuk semua orang!
   DEFAULT_API_URL: 'https://script.google.com/macros/s/AKfycbxW6jojEh_ejvcqLMHxnYFxNG3Kuu5IH7CGYpbWVxQN9Jg2T1F4D_6qhkuR1YC74VzM/exec',
 
+  tempInvoiceFile: null,
+  tempMenuFile: null,
+
   data: {
     menus: [],
     invoices: [],
@@ -341,15 +344,15 @@ const app = {
     
     if (logoData) {
       if (loginContainer) {
-        loginContainer.innerHTML = `<img src="${logoData}" style="max-height: 220px; max-width: 440px; object-fit: contain;">`;
+        loginContainer.innerHTML = `<img src="${logoData}" style="max-height: 150px; max-width: 280px; object-fit: contain;">`;
         loginContainer.style.display = 'flex';
       }
       if (sidebarContainer) {
-        sidebarContainer.innerHTML = `<img src="${logoData}" style="max-height: 110px; max-width: 220px; object-fit: contain; margin-bottom: 5px;">`;
+        sidebarContainer.innerHTML = `<img src="${logoData}" style="max-height: 130px; max-width: 220px; object-fit: contain; margin-bottom: 5px;">`;
         sidebarContainer.style.display = 'block';
       }
       if (navbarContainer) {
-        navbarContainer.innerHTML = `<img src="${logoData}" style="max-height: 48px; max-width: 140px; object-fit: contain; border-radius: 4px; display: block;">`;
+        navbarContainer.innerHTML = `<img src="${logoData}" style="max-height: 60px; max-width: 140px; object-fit: contain; border-radius: 4px; display: block;">`;
         navbarContainer.style.display = 'flex';
         navbarContainer.style.alignItems = 'center';
       }
@@ -357,7 +360,7 @@ const app = {
         // For PDF, always use base64 to avoid canvas CORS taint
         if (logoData.startsWith('data:') || logoData.startsWith('./') || logoData.startsWith('/')) {
           // Already base64 or local — safe to use directly
-          pdfContainer.innerHTML = `<img src="${logoData}" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
+          pdfContainer.innerHTML = `<img src="${logoData}" style="max-height: 85px; max-width: 220px; object-fit: contain;">`;
           pdfContainer.style.display = 'block';
         } else {
           // Remote URL — fetch and convert to base64
@@ -366,14 +369,14 @@ const app = {
             .then(blob => {
               const reader = new FileReader();
               reader.onloadend = () => {
-                pdfContainer.innerHTML = `<img src="${reader.result}" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
+                pdfContainer.innerHTML = `<img src="${reader.result}" style="max-height: 85px; max-width: 220px; object-fit: contain;">`;
                 pdfContainer.style.display = 'block';
               };
               reader.readAsDataURL(blob);
             })
             .catch(() => {
               // Fallback: use directly (may cause canvas taint but better than nothing)
-              pdfContainer.innerHTML = `<img src="${logoData}" crossorigin="anonymous" style="max-height: 80px; max-width: 220px; object-fit: contain;">`;
+              pdfContainer.innerHTML = `<img src="${logoData}" crossorigin="anonymous" style="max-height: 85px; max-width: 220px; object-fit: contain;">`;
               pdfContainer.style.display = 'block';
             });
         }
@@ -1589,6 +1592,170 @@ const app = {
       await this.deleteRow('Menus', id);
       this.renderMenus();
     }
+  },
+
+  downloadInvoiceTemplate() {
+    try {
+      const headers = [
+        ['customerName', 'customerPhone', 'cateringLocation', 'cateringCity', 'cateringDate', 'status', 'notes', 'items', 'subtotalAmount', 'discountType', 'discountValue', 'additionalFee', 'paidAmount', 'paymentHistory']
+      ];
+      // Dummy data row as an example
+      const dummyRow = [
+        'Budi Santoso',
+        '081234567890',
+        'Jl. Raya Serang No. 12',
+        'Serang',
+        '2026-07-10',
+        'Belum Lunas',
+        'Catatan acara tambahan...',
+        '[{"name":"Paket Nasi Kebuli","price":35000,"qty":100,"unit":"pax","subtotal":3500000}]',
+        '3500000',
+        'none',
+        '0',
+        '0',
+        '0',
+        '[]'
+      ];
+      const data = [...headers, dummyRow];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Invoices Template");
+      XLSX.writeFile(wb, "Template_Import_Invoice.xlsx");
+      this.showAlert("Template Import Invoice berhasil diunduh!", "success");
+    } catch (err) {
+      this.showAlert("Gagal mengunduh template invoice: " + err.message, "error");
+    }
+  },
+
+  downloadMenuTemplate() {
+    try {
+      const headers = [
+        ['name', 'price', 'unit', 'description']
+      ];
+      // Dummy data row as an example
+      const dummyRow = [
+        'Paket Nasi Kebuli Special',
+        '35000',
+        'pax',
+        'Nasi kebuli premium dengan daging kambing empuk dan acar.'
+      ];
+      const data = [...headers, dummyRow];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Menus Template");
+      XLSX.writeFile(wb, "Template_Import_Menu.xlsx");
+      this.showAlert("Template Import Menu berhasil diunduh!", "success");
+    } catch (err) {
+      this.showAlert("Gagal mengunduh template menu: " + err.message, "error");
+    }
+  },
+
+  // State for import modals
+  currentImportType: null,
+  tempImportFile: null,
+
+  openImportModal(type) {
+    this.currentImportType = type;
+    this.tempImportFile = null;
+    
+    // Reset file input in DOM
+    const fileInput = document.getElementById('modalImportFileInput');
+    if (fileInput) fileInput.value = '';
+
+    // Reset Drop Zone UI to original state
+    const dropZone = document.getElementById('importDropZone');
+    const dropZoneIcon = document.getElementById('dropZoneIcon');
+    const dropZoneText = document.getElementById('dropZoneText');
+    const dropZoneSubtext = document.getElementById('dropZoneSubtext');
+    const submitBtn = document.getElementById('btnSubmitImport');
+
+    if (dropZone) {
+      dropZone.style.border = '2px dashed var(--color-border)';
+      dropZone.style.background = 'rgba(0, 0, 0, 0.1)';
+    }
+    if (dropZoneIcon) {
+      dropZoneIcon.setAttribute('data-lucide', 'file-spreadsheet');
+      dropZoneIcon.style.color = 'var(--color-primary)';
+    }
+    if (dropZoneText) {
+      dropZoneText.textContent = 'Pilih atau seret file Excel ke sini';
+      dropZoneText.style.color = 'var(--color-text)';
+    }
+    if (dropZoneSubtext) dropZoneSubtext.style.display = 'block';
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.5';
+      submitBtn.style.cursor = 'not-allowed';
+    }
+
+    // Configure dynamically based on type
+    const title = document.getElementById('importModalTitle');
+    const templateBtn = document.getElementById('btnDownloadImportTemplate');
+
+    if (type === 'invoice') {
+      if (title) title.textContent = 'Import Invoices';
+      if (templateBtn) {
+        templateBtn.onclick = () => this.downloadInvoiceTemplate();
+      }
+    } else {
+      if (title) title.textContent = 'Import Master Menu';
+      if (templateBtn) {
+        templateBtn.onclick = () => this.downloadMenuTemplate();
+      }
+    }
+
+    this.openModal('importExcelModal');
+    lucide.createIcons();
+  },
+
+  handleImportFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    this.tempImportFile = file;
+
+    const dropZone = document.getElementById('importDropZone');
+    const dropZoneIcon = document.getElementById('dropZoneIcon');
+    const dropZoneText = document.getElementById('dropZoneText');
+    const dropZoneSubtext = document.getElementById('dropZoneSubtext');
+    const submitBtn = document.getElementById('btnSubmitImport');
+
+    if (dropZone) {
+      dropZone.style.border = '2px solid var(--color-success)';
+      dropZone.style.background = 'rgba(16, 185, 129, 0.1)';
+    }
+    if (dropZoneIcon) {
+      dropZoneIcon.setAttribute('data-lucide', 'check-circle');
+      dropZoneIcon.style.color = 'var(--color-success)';
+    }
+    if (dropZoneText) {
+      dropZoneText.textContent = file.name;
+      dropZoneText.style.color = 'var(--color-success)';
+    }
+    if (dropZoneSubtext) dropZoneSubtext.style.display = 'none';
+
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+      submitBtn.style.cursor = 'pointer';
+    }
+
+    lucide.createIcons();
+  },
+
+  async executeImport() {
+    if (!this.tempImportFile) return;
+
+    const pseudoEvent = { target: { files: [this.tempImportFile] } };
+    
+    if (this.currentImportType === 'invoice') {
+      await this.importInvoicesFromExcel(pseudoEvent);
+    } else {
+      await this.importExcel(pseudoEvent);
+    }
+
+    this.closeModal('importExcelModal');
   },
 
   async importExcel(e) {
@@ -5238,6 +5405,85 @@ const app = {
       ];
       ws['!cols'] = colWidths;
 
+      // Style definitions for xlsx-js-style
+      const titleStyle = {
+        font: { name: "Arial", sz: 14, bold: true, color: { rgb: "0F172A" } }
+      };
+
+      const metaStyle = {
+        font: { name: "Arial", sz: 10, italic: true, color: { rgb: "475569" } }
+      };
+
+      const headerStyle = {
+        font: { name: "Arial", sz: 10, bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "D4AF37" } }, // Gold brand color
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "CBD5E1" } },
+          bottom: { style: "medium", color: { rgb: "0F172A" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } }
+        }
+      };
+
+      const dataStyle = {
+        font: { name: "Arial", sz: 10 },
+        border: {
+          top: { style: "thin", color: { rgb: "E2E8F0" } },
+          bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+          left: { style: "thin", color: { rgb: "E2E8F0" } },
+          right: { style: "thin", color: { rgb: "E2E8F0" } }
+        }
+      };
+
+      const totalStyle = {
+        font: { name: "Arial", sz: 10, bold: true, color: { rgb: "0F172A" } },
+        fill: { fgColor: { rgb: "F1F5F9" } },
+        border: {
+          top: { style: "thin", color: { rgb: "94A3B8" } },
+          bottom: { style: "double", color: { rgb: "0F172A" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } }
+        }
+      };
+
+      // Apply styles to each cell ref
+      for (const cellRef in ws) {
+        if (cellRef[0] === '!') continue; // Skip metadata keys like !ref
+        
+        const cell = ws[cellRef];
+        const colLetter = cellRef.match(/^[A-Z]+/)[0];
+        const rowNum = parseInt(cellRef.match(/\d+$/)[0]);
+        
+        if (rowNum === 1) {
+          cell.s = titleStyle;
+        } else if (rowNum === 2 || rowNum === 3) {
+          cell.s = metaStyle;
+        } else if (rowNum === 5) {
+          cell.s = headerStyle;
+        } else if (rowNum === 5 + sortedMonths.length + 1) {
+          // Total row
+          if (colLetter === 'B') {
+            cell.s = { ...totalStyle, alignment: { horizontal: "center" } };
+          } else if (colLetter === 'C' || colLetter === 'D' || colLetter === 'E') {
+            cell.s = { ...totalStyle, alignment: { horizontal: "right" } };
+            cell.z = '"Rp"#,##0';
+          } else {
+            cell.s = { ...totalStyle, alignment: { horizontal: "left" } };
+          }
+        } else if (rowNum > 5 && rowNum <= 5 + sortedMonths.length) {
+          // Data row
+          if (colLetter === 'B') {
+            cell.s = { ...dataStyle, alignment: { horizontal: "center" } };
+          } else if (colLetter === 'C' || colLetter === 'D' || colLetter === 'E') {
+            cell.s = { ...dataStyle, alignment: { horizontal: "right" } };
+            cell.z = '"Rp"#,##0';
+          } else {
+            cell.s = { ...dataStyle, alignment: { horizontal: "left" } };
+          }
+        }
+      }
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Laporan Pendapatan");
 
@@ -5251,6 +5497,266 @@ const app = {
       this.showAlert("Gagal mengekspor laporan ke Excel.", "error");
     } finally {
       this.showLoading(false);
+    }
+  },
+
+  exportReportToPDF() {
+    this.showLoading(true, "Menyiapkan pratinjau laporan PDF...");
+    try {
+      // 1. Filter Invoices
+      const filteredInvoices = this.data.invoices.filter(inv => {
+        if (!inv.cateringDate) return false;
+        const invDateStr = inv.cateringDate.substring(0, 10);
+        
+        if (this.reportState.filterType === 'year') {
+          const year = parseInt(invDateStr.substring(0, 4));
+          return year === this.reportState.selectedYear;
+        } else {
+          return invDateStr >= this.reportState.startDate && invDateStr <= this.reportState.endDate;
+        }
+      });
+
+      // 2. Aggregate Monthly Data
+      const monthlyGroups = {};
+      filteredInvoices.forEach(inv => {
+        const monthStr = inv.cateringDate.substring(0, 7);
+        if (!monthlyGroups[monthStr]) {
+          monthlyGroups[monthStr] = {
+            monthKey: monthStr,
+            invoiceCount: 0,
+            totalAmount: 0,
+            totalPaid: 0,
+            totalRemaining: 0
+          };
+        }
+        
+        const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+        const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+        
+        monthlyGroups[monthStr].invoiceCount += 1;
+        monthlyGroups[monthStr].totalAmount += Number(inv.totalAmount);
+        monthlyGroups[monthStr].totalPaid += paid;
+        monthlyGroups[monthStr].totalRemaining += remaining;
+      });
+
+      const sortedMonths = Object.keys(monthlyGroups).sort();
+      
+      if (sortedMonths.length === 0) {
+        this.showAlert("Tidak ada data transaksi untuk dicetak pada filter terpilih.", "warning");
+        this.showLoading(false);
+        return;
+      }
+
+      // 3. Set Filter Description
+      let filterDesc = '';
+      if (this.reportState.filterType === 'year') {
+        filterDesc = `Tahun ${this.reportState.selectedYear}`;
+      } else {
+        filterDesc = `${this.formatDate(this.reportState.startDate)} s.d. ${this.formatDate(this.reportState.endDate)}`;
+      }
+
+      document.getElementById('pdfReportPeriod').textContent = filterDesc;
+      document.getElementById('pdfReportPrintDate').textContent = `${new Date().toLocaleDateString('id-ID')} ${new Date().toLocaleTimeString('id-ID')}`;
+      document.getElementById('pdfReportDocId').textContent = 'RPT-' + new Date().getTime().toString();
+
+      // 4. Calculate Grand Totals
+      let grandTotalCount = 0;
+      let grandTotalAmount = 0;
+      let grandTotalPaid = 0;
+      let grandTotalRemaining = 0;
+
+      sortedMonths.forEach(mKey => {
+        const group = monthlyGroups[mKey];
+        grandTotalCount += group.invoiceCount;
+        grandTotalAmount += group.totalAmount;
+        grandTotalPaid += group.totalPaid;
+        grandTotalRemaining += group.totalRemaining;
+      });
+
+      // 5. Populate KPI summary cards in PDF
+      document.getElementById('pdfReportTotalInvoices').textContent = grandTotalCount;
+      document.getElementById('pdfReportTotalAmount').textContent = this.formatCurrency(grandTotalAmount);
+      document.getElementById('pdfReportTotalPaid').textContent = this.formatCurrency(grandTotalPaid);
+      document.getElementById('pdfReportTotalRemaining').textContent = this.formatCurrency(grandTotalRemaining);
+
+      // 6. Generate Monthly Summary Table Body & Total Row
+      const reportTbody = document.getElementById('pdfReportTableBody');
+      if (reportTbody) {
+        reportTbody.innerHTML = '';
+        sortedMonths.forEach(mKey => {
+          const group = monthlyGroups[mKey];
+          const [year, month] = mKey.split('-');
+          const monthName = new Date(year, parseInt(month) - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+          
+          reportTbody.innerHTML += `
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 6px 4px; font-weight: 600;">${monthName}</td>
+              <td style="padding: 6px 4px; text-align: center;">${group.invoiceCount}</td>
+              <td style="padding: 6px 4px; text-align: right;">${this.formatCurrency(group.totalAmount)}</td>
+              <td style="padding: 6px 4px; text-align: right; color: #059669; font-weight: 500;">${this.formatCurrency(group.totalPaid)}</td>
+              <td style="padding: 6px 4px; text-align: right; color: ${group.totalRemaining > 0 ? '#dc2626' : '#64748b'}; font-weight: 500;">
+                ${this.formatCurrency(group.totalRemaining)}
+              </td>
+            </tr>
+          `;
+        });
+        
+        // Add footer total row
+        reportTbody.innerHTML += `
+          <tr style="font-weight: bold; background: #f8fafc; border-top: 1.5px solid #cbd5e1;">
+            <td style="padding: 6px 4px; color: #0f172a;">TOTAL</td>
+            <td style="padding: 6px 4px; text-align: center;">${grandTotalCount}</td>
+            <td style="padding: 6px 4px; text-align: right;">${this.formatCurrency(grandTotalAmount)}</td>
+            <td style="padding: 6px 4px; text-align: right; color: #059669;">${this.formatCurrency(grandTotalPaid)}</td>
+            <td style="padding: 6px 4px; text-align: right; color: ${grandTotalRemaining > 0 ? '#dc2626' : 'inherit'};">${this.formatCurrency(grandTotalRemaining)}</td>
+          </tr>
+        `;
+      }
+
+      // 7. Aggregate Client Data (Top 5)
+      const clientMap = {};
+      filteredInvoices.forEach(inv => {
+        const cName = inv.customerName || 'Unknown';
+        if (!clientMap[cName]) {
+          clientMap[cName] = {
+            name: cName,
+            eventCount: 0,
+            totalAmount: 0,
+            totalPaid: 0,
+            totalRemaining: 0
+          };
+        }
+        const paid = Number(inv.paidAmount) || (inv.status === 'Lunas' ? Number(inv.totalAmount) : 0);
+        const remaining = Math.max(0, Number(inv.totalAmount) - paid);
+        
+        clientMap[cName].eventCount += 1;
+        clientMap[cName].totalAmount += Number(inv.totalAmount);
+        clientMap[cName].totalPaid += paid;
+        clientMap[cName].totalRemaining += remaining;
+      });
+
+      const sortedClients = Object.values(clientMap)
+        .sort((a, b) => b.totalAmount - a.totalAmount)
+        .slice(0, 5);
+
+      const clientTbody = document.getElementById('pdfClientRatingTableBody');
+      if (clientTbody) {
+        clientTbody.innerHTML = '';
+        if (sortedClients.length === 0) {
+          clientTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 20px; color: #94a3b8;">Belum ada data kustomer.</td></tr>`;
+        } else {
+          sortedClients.forEach((client, idx) => {
+            clientTbody.innerHTML += `
+              <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 6px 4px; text-align: center; font-weight: 700; color: #64748b;">${idx + 1}</td>
+                <td style="padding: 6px 4px; font-weight: 600; color: #0f172a; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHTML(client.name)}</td>
+                <td style="padding: 6px 4px; text-align: center;">${client.eventCount}</td>
+                <td style="padding: 6px 4px; text-align: right; font-weight: bold;">${this.formatCurrency(client.totalAmount)}</td>
+                <td style="padding: 6px 4px; text-align: right; color: ${client.totalRemaining > 0 ? '#dc2626' : '#94a3b8'};">${this.formatCurrency(client.totalRemaining)}</td>
+              </tr>
+            `;
+          });
+        }
+      }
+
+      // 8. Capture Chart Canvas and display in PDF
+      const chartCanvas = document.getElementById('reportChart');
+      const chartContainer = document.getElementById('pdfReportChartContainer');
+      if (chartCanvas && chartContainer) {
+        try {
+          const chartUrl = chartCanvas.toDataURL('image/jpeg', 0.95);
+          chartContainer.innerHTML = `<img src="${chartUrl}" style="max-width: 100%; max-height: 180px; object-fit: contain; border-radius: 4px; display: block;">`;
+        } catch (chartErr) {
+          console.error("Gagal men-convert grafik ke gambar:", chartErr);
+          chartContainer.innerHTML = `<div style="font-size: 11px; color: #94a3b8; border: 1px dashed #cbd5e1; padding: 20px; width: 100%; text-align: center; border-radius: 6px;">Grafik tidak dapat dimuat (Error: ${chartErr.message})</div>`;
+        }
+      }
+
+      // 9. Load Business Logo
+      const logoContainer = document.getElementById('pdfReportLogoContainer');
+      let logoData = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : './logo.png');
+      if (logoData && logoContainer) {
+        logoContainer.innerHTML = `<img src="${logoData}" style="max-height: 75px; max-width: 220px; object-fit: contain; border-radius: 4px; display: block;">`;
+      }
+
+      // 10. Open Preview Modal
+      this.openModal('pdfReportWrapper');
+      lucide.createIcons();
+    } catch (err) {
+      console.error(err);
+      this.showAlert("Gagal memproses pratinjau PDF laporan: " + err.message, "error");
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  confirmPrintReport() {
+    try {
+      const pdfEl = document.getElementById('pdfReportContent');
+      if (!pdfEl) {
+        this.showAlert('Elemen konten laporan PDF tidak ditemukan.', 'error');
+        return;
+      }
+
+      // Resolve jsPDF class safely
+      let jsPDFClass = null;
+      if (typeof window.jsPDF !== 'undefined') {
+        jsPDFClass = window.jsPDF;
+      } else if (typeof window.jspdf !== 'undefined' && typeof window.jspdf.jsPDF !== 'undefined') {
+        jsPDFClass = window.jspdf.jsPDF;
+      }
+
+      const hasHtml2Canvas = typeof html2canvas !== 'undefined';
+      const hasJsPDF = jsPDFClass !== null;
+
+      if (!hasHtml2Canvas || !hasJsPDF) {
+        this.showAlert('Library cetak PDF belum termuat sepenuhnya.', 'warning');
+        return;
+      }
+
+      this.showLoading(true, 'Mengekspor PDF Laporan...');
+
+      const originalFont = pdfEl.style.fontFamily;
+      pdfEl.style.fontFamily = 'Arial, Helvetica, sans-serif';
+
+      setTimeout(() => {
+        html2canvas(pdfEl, { 
+          scale: 2, 
+          useCORS: false, 
+          allowTaint: false, 
+          logging: false
+        })
+          .then(canvas => {
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const pdf = new jsPDFClass('p', 'mm', 'a4');
+            
+            const pdfWidth = typeof pdf.internal.pageSize.getWidth === 'function'
+              ? pdf.internal.pageSize.getWidth()
+              : (pdf.internal.pageSize.width || 210);
+              
+            const pdfHeight = (pdfEl.offsetHeight * pdfWidth) / pdfEl.offsetWidth;
+            
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            
+            const periodText = document.getElementById('pdfReportPeriod').textContent.replace(/[^a-zA-Z0-9]/g, '_');
+            pdf.save(`Laporan_Pendapatan_${periodText}.pdf`);
+            
+            pdfEl.style.fontFamily = originalFont;
+            this.showLoading(false);
+            this.closeModal('pdfReportWrapper');
+            this.showAlert('Laporan PDF berhasil diunduh!', 'success');
+          })
+          .catch(err => {
+            console.error('PDF report creation failed:', err);
+            pdfEl.style.fontFamily = originalFont;
+            this.showLoading(false);
+            this.showAlert('Gagal mengekspor PDF laporan: ' + err.message, 'error');
+          });
+      }, 150);
+    } catch (err) {
+      console.error(err);
+      this.showLoading(false);
+      this.showAlert('Terjadi kesalahan saat mengekspor laporan: ' + err.message, 'error');
     }
   },
 

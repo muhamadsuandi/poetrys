@@ -3460,17 +3460,3 @@ body.light-theme .tooltip-content {
   border: 1px solid rgba(0, 0, 0, 0.1);
   box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }
-
-/* Reports Page Tables - Compact layout to prevent scroll side-by-side */
-#viewReports table th,
-#viewReports table td {
-  padding: 6px 8px !important;
-  font-size: 12px !important;
-}
-
-/* Prevent wrapping ONLY on nominal/currency cells (col 3, 4, 5) */
-#viewReports table td:nth-child(3),
-#viewReports table td:nth-child(4),
-#viewReports table td:nth-child(5) {
-  white-space: nowrap !important;
-}
