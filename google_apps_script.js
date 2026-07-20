@@ -1,7 +1,7 @@
 // Google Apps Script API for Poetry's Catering - SECURE VERSION
 
 const SCRIPT_PROP = PropertiesService.getScriptProperties();
-const SECRET_KEY = "PoetrysCateringSecureKey2026"; // In a real scenario, use PropertiesService to store this secret
+const SECRET_KEY = SCRIPT_PROP.getProperty("SECRET_KEY") || "PoetrysCateringSecureKey2026"; // Fallback to original if not configured in Script Properties
 
 function setup() {
   const doc = SpreadsheetApp.getActiveSpreadsheet();
@@ -42,10 +42,14 @@ function verifyToken(token) {
   return null;
 }
 
-// FUNGSI INI HANYA UNTUK MEMANCING IZIN GOOGLE CALENDAR
+// FUNGSI INI HANYA UNTUK MEMANCING IZIN GOOGLE CALENDAR & URLFETCH
 function authorizeCalendar() {
   const cal = CalendarApp.getDefaultCalendar();
   Logger.log("Calendar Name: " + cal.getName());
+  UrlFetchApp.fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+    headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
 }
 
 function doPost(e) {
@@ -135,6 +139,51 @@ function deleteCalendarEvent(eventId) {
   } catch(e) {}
 }
 
+function getCalendarShares() {
+  try {
+    const aclList = Calendar.Acl.list("primary");
+    if (aclList && aclList.items) {
+      const shares = aclList.items.filter(function(item) {
+        return item.role !== 'owner' && item.scope && item.scope.type === 'user';
+      }).map(function(item) {
+        return {
+          id: item.id,
+          email: item.scope.value,
+          role: item.role
+        };
+      });
+      return shares;
+    }
+  } catch (e) {
+    throw new Error("Gagal mengambil data sharing kalender. Harap tambahkan 'Google Calendar API' di panel kiri (Services) editor Google Apps Script terlebih dahulu.");
+  }
+  return [];
+}
+
+function shareCalendar(email, role) {
+  try {
+    const resource = {
+      role: role || "writer",
+      scope: {
+        type: "user",
+        value: email
+      }
+    };
+    return Calendar.Acl.insert(resource, "primary");
+  } catch (e) {
+    throw new Error("Gagal membagikan kalender. Pastikan email benar dan 'Google Calendar API' sudah ditambahkan di panel kiri (Services).");
+  }
+}
+
+function unshareCalendar(ruleId) {
+  try {
+    Calendar.Acl.remove("primary", ruleId);
+    return { status: "success" };
+  } catch (e) {
+    throw new Error("Gagal menghapus sharing kalender. Pastikan 'Google Calendar API' sudah ditambahkan di panel kiri (Services).");
+  }
+}
+
 function handleResponse(e) {
   const action = e.parameter.action;
 
@@ -156,6 +205,31 @@ function handleResponse(e) {
 
   try {
     const doc = SpreadsheetApp.getActiveSpreadsheet();
+
+    // === CALENDAR SHARING ACTIONS ===
+    if (action === "GET_CALENDAR_SHARES") {
+      const shares = getCalendarShares();
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: shares }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === "SHARE_CALENDAR") {
+      const email = e.parameter.email;
+      const result = shareCalendar(email, "writer");
+      if (result.error) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: result.error.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === "UNSHARE_CALENDAR") {
+      const ruleId = e.parameter.ruleId;
+      const result = unshareCalendar(ruleId);
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
 
     // === LOGIN ACTION ===
     if (action === "LOGIN") {
@@ -225,23 +299,40 @@ function handleResponse(e) {
 
     if (action === "GET_GUEST_INVOICE") {
       const invNum = e.parameter.invoiceNumber;
+      const phoneInput = e.parameter.phone; // New parameter for security verification
+      
+      if (!phoneInput) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Verification required. Please provide your phone number." }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
       const sheet = doc.getSheetByName("Invoices");
       if (!sheet) throw new Error("Invoices sheet not found");
       const data = sheet.getDataRange().getValues();
       const headers = data[0];
       const invNumIdx = headers.indexOf("invoiceNumber");
+      const phoneIdx = headers.indexOf("customerPhone");
       
       for (let i = 1; i < data.length; i++) {
         if (data[i][invNumIdx] == invNum) {
-          const rowData = {};
-          for (let j = 0; j < headers.length; j++) {
-            rowData[headers[j]] = data[i][j];
+          // Clean phone numbers to compare trailing digits (removes spaces, dashes, and prefixes like +62 or 0)
+          const cleanDbPhone = String(data[i][phoneIdx] || '').replace(/[^0-9]/g, '').replace(/^(62|0)/, '');
+          const cleanInputPhone = String(phoneInput).replace(/[^0-9]/g, '').replace(/^(62|0)/, '');
+          
+          if (cleanDbPhone === cleanInputPhone && cleanInputPhone !== '') {
+            const rowData = {};
+            for (let j = 0; j < headers.length; j++) {
+              rowData[headers[j]] = data[i][j];
+            }
+            return ContentService.createTextOutput(JSON.stringify({ status: "success", data: rowData }))
+              .setMimeType(ContentService.MimeType.JSON);
+          } else {
+            return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Nomor telepon verifikasi salah. Akses ditolak." }))
+              .setMimeType(ContentService.MimeType.JSON);
           }
-          return ContentService.createTextOutput(JSON.stringify({ status: "success", data: rowData }))
-            .setMimeType(ContentService.MimeType.JSON);
         }
       }
-      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Invoice not found" }))
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Invoice tidak ditemukan." }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 

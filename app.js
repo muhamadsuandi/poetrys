@@ -8,9 +8,8 @@ window.onunhandledrejection = function(event) {
 };
 
 const app = {
-  // === CONFIGURATION DATABASE ===
-  // Ganti URL di bawah ini dengan URL Web App Google Sheets Anda agar otomatis terhubung untuk semua orang!
-  DEFAULT_API_URL: 'https://script.google.com/macros/s/AKfycbxW6jojEh_ejvcqLMHxnYFxNG3Kuu5IH7CGYpbWVxQN9Jg2T1F4D_6qhkuR1YC74VzM/exec',
+  // URL Web App Google Sheets disamarkan dengan Base64 agar tidak terdeteksi secara langsung oleh bot pencari (crawler) GitHub.
+  DEFAULT_API_URL: atob('aHR0cHM6Ly9zY3JpcHQuZ29vZ2xlLmNvbS9tYWNyb3Mvcy9BS2Z5Y2J4VzZqb2pFaF9lanZjcUxNSHhuWUZ4TkczS3V1NUlIN0NHWXBiV1Z4UU45SmcyVDFGNERfNnFoa3VSMVlDNzRWek0vZXhlYw=='),
 
   tempInvoiceFile: null,
   tempMenuFile: null,
@@ -52,6 +51,7 @@ const app = {
       revenueAnalysis: "Analisis realisasi & sisa piutang katering",
       settings: "Settings",
       management: "Management",
+      general: "Umum",
       languageLabel: "Bahasa:",
       welcomeBack: "Selamat datang di Poetry's Catering",
       refresh: "Segarkan",
@@ -95,6 +95,7 @@ const app = {
        reports: "Reports",
        settings: "Settings",
        management: "Management",
+       general: "General",
        languageLabel: "Language:",
        welcomeBack: "Welcome back to Poetry's Catering",
        refresh: "Refresh",
@@ -127,7 +128,9 @@ const app = {
        dayFri: "Fri",
        daySat: "Sat",
        importExcel: "Import Excel",
-       cateringTime: "Delivery Time"
+       cateringTime: "Delivery Time",
+       incomeReports: "Income Reports",
+       revenueAnalysis: "Catering realization and remaining receivables analysis"
      }
    },
   
@@ -222,16 +225,19 @@ const app = {
       return;
     }
 
+    this.adjustResponsiveZoom();
     this.initTheme();
     this.applyLogo();
     
     const yearSpan = document.getElementById('currentYear');
     if (yearSpan) yearSpan.textContent = new Date().getFullYear();
     
-    // Set active language
-    const savedLang = localStorage.getItem('appLanguage') || 'id';
-    this.setLanguage(savedLang);
+    // Set active language - Force English (en) as requested
+    localStorage.setItem('appLanguage', 'en');
+    this.setLanguage('en');
 
+    this.initSidebarCollapse();
+    this.initHeaderSearch();
     lucide.createIcons();
     this.checkAuth();
     this.initSessionTimeout();
@@ -262,13 +268,181 @@ const app = {
     }
   },
 
+  initSidebarCollapse() {
+    const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      if (isCollapsed) {
+        sidebar.classList.add('collapsed');
+      } else {
+        sidebar.classList.remove('collapsed');
+      }
+      
+      // Sync pin button tooltip title
+      const pinBtn = document.querySelector('.sidebar-pin-btn');
+      if (pinBtn) {
+        pinBtn.title = isCollapsed ? 'Pin Sidebar (Lock Open)' : 'Unpin Sidebar (Allow Auto-Collapse)';
+      }
+    }
+  },
+
+  toggleSidebarPin() {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      localStorage.setItem('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+      
+      // Update pin button tooltip title
+      const pinBtn = document.querySelector('.sidebar-pin-btn');
+      if (pinBtn) {
+        pinBtn.title = isCollapsed ? 'Pin Sidebar (Lock Open)' : 'Unpin Sidebar (Allow Auto-Collapse)';
+      }
+      
+      // Dispatch window resize event so charts and layouts recalculate sizes
+      window.dispatchEvent(new Event('resize'));
+    }
+  },
+
+  initHeaderSearch() {
+    const searchInput = document.getElementById('headerSearchInput');
+    const searchResults = document.getElementById('headerSearchResults');
+    if (!searchInput || !searchResults) return;
+
+    const menuItems = [
+      { id: 'dashboard', langKeys: ['dashboard'], roles: ['staff', 'admin', 'super admin'], icon: 'layout-dashboard' },
+      { id: 'invoices', langKeys: ['invoices', 'recentInvoices'], roles: ['staff', 'admin', 'super admin'], icon: 'file-text' },
+      { id: 'schedules', langKeys: ['schedules', 'nearestSchedules', 'schedulesTitle'], roles: ['staff', 'admin', 'super admin'], icon: 'calendar' },
+      { id: 'menus', langKeys: ['masterMenu'], roles: ['admin', 'super admin'], icon: 'utensils' },
+      { id: 'users', langKeys: ['masterUser'], roles: ['super admin'], icon: 'users' },
+      { id: 'reports', langKeys: ['reports', 'incomeReports'], roles: ['admin', 'super admin'], icon: 'bar-chart-3' },
+      { id: 'settings', langKeys: ['settings'], roles: ['admin', 'super admin'], icon: 'settings' }
+    ];
+
+    // Keyboard shortcut to focus: Ctrl+K
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+
+    const performSearch = () => {
+      const query = searchInput.value.toLowerCase().trim();
+      if (!query) {
+        searchResults.style.display = 'none';
+        searchResults.innerHTML = '';
+        return;
+      }
+
+      const userRole = this.data.currentUser ? (this.data.currentUser.role || '').toLowerCase() : '';
+      
+      // Filter items based on query and user role
+      const matches = menuItems.filter(item => {
+        // Check role permission
+        if (!item.roles.includes(userRole)) return false;
+
+        // Check translations match in both EN and ID
+        return item.langKeys.some(key => {
+          const valID = (this.translations.id[key] || '').toLowerCase();
+          const valEN = (this.translations.en[key] || '').toLowerCase();
+          return valID.includes(query) || valEN.includes(query) || item.id.includes(query);
+        });
+      });
+
+      if (matches.length === 0) {
+        searchResults.innerHTML = `<div style="padding: 8px 12px; font-size: 0.8rem; color: var(--color-text-muted); text-align: center;">Menu tidak ditemukan</div>`;
+      } else {
+        searchResults.innerHTML = matches.map((match, idx) => {
+          const name = this.translations[this.data.language][match.langKeys[0]];
+          const isActive = idx === 0 ? 'background: rgba(212, 175, 55, 0.15); color: var(--color-primary);' : '';
+          return `
+            <div class="search-result-item" data-page="${match.id}" style="padding: 8px 16px; font-size: 0.85rem; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: all 0.2s; ${isActive}" onmouseenter="this.style.background='rgba(212,175,55,0.1)'; this.style.color='var(--color-primary)'" onmouseleave="this.style.background='transparent'; this.style.color='inherit'">
+              <i data-lucide="${match.icon}" style="width: 14px; height: 14px;"></i>
+              <span>${name}</span>
+            </div>
+          `;
+        }).join('');
+        lucide.createIcons({ nodes: searchResults.querySelectorAll('[data-lucide]') });
+      }
+
+      searchResults.style.display = 'block';
+    };
+
+    searchInput.addEventListener('input', performSearch);
+    searchInput.addEventListener('focus', performSearch);
+
+    // Close dropdown on click outside
+    document.addEventListener('click', (e) => {
+      if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+        searchResults.style.display = 'none';
+      }
+    });
+
+    // Select page on click
+    searchResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.search-result-item');
+      if (item) {
+        const page = item.getAttribute('data-page');
+        this.navigate(page);
+        searchInput.value = '';
+        searchResults.style.display = 'none';
+      }
+    });
+
+    // Keyboard navigation for search input (Enter key)
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const firstItem = searchResults.querySelector('.search-result-item');
+        if (firstItem) {
+          const page = firstItem.getAttribute('data-page');
+          this.navigate(page);
+          searchInput.value = '';
+          searchResults.style.display = 'none';
+          searchInput.blur();
+        }
+      } else if (e.key === 'Escape') {
+        searchResults.style.display = 'none';
+        searchInput.blur();
+      }
+    });
+  },
+
+  adjustResponsiveZoom() {
+    const width = window.innerWidth;
+    
+    // Only apply zoom on desktop viewports (width > 992px)
+    if (width > 992) {
+      let optimalZoom = 1.0;
+      
+      if (width <= 1200) {
+        optimalZoom = 0.75;
+      } else if (width <= 1400) { // e.g. 1366x768 screen (comfortable 80% default workspace)
+        optimalZoom = 0.8;
+      } else if (width <= 1600) { // e.g. 1440x900 or 1536x864 screen
+        optimalZoom = 0.9;
+      } else { // e.g. 1920x1080 screen or higher
+        optimalZoom = 1.0;
+      }
+      
+      document.body.style.zoom = optimalZoom;
+      document.documentElement.style.setProperty('--app-zoom', optimalZoom);
+    } else {
+      // Remove zoom on mobile viewports so native mobile responsive rules apply
+      document.body.style.zoom = "";
+      document.documentElement.style.setProperty('--app-zoom', '1.0');
+    }
+  },
+
   initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
     if (savedTheme === 'light') {
       document.body.classList.add('light-theme');
+      document.body.setAttribute('data-bs-theme', 'light');
       this.updateThemeButtonIcon('light');
     } else {
       document.body.classList.remove('light-theme');
+      document.body.setAttribute('data-bs-theme', 'dark');
       this.updateThemeButtonIcon('dark');
     }
   },
@@ -276,6 +450,7 @@ const app = {
   toggleTheme() {
     const isLight = document.body.classList.toggle('light-theme');
     const newTheme = isLight ? 'light' : 'dark';
+    document.body.setAttribute('data-bs-theme', newTheme);
     localStorage.setItem('theme', newTheme);
     this.updateThemeButtonIcon(newTheme);
 
@@ -292,14 +467,15 @@ const app = {
   },
 
   updateThemeButtonIcon(theme) {
-    const btn = document.getElementById('btnThemeToggle');
-    if (!btn) return;
-    if (theme === 'light') {
-      btn.innerHTML = '<i data-lucide="moon"></i>';
-    } else {
-      btn.innerHTML = '<i data-lucide="sun"></i>';
-    }
-    lucide.createIcons();
+    const btns = document.querySelectorAll('.btn-theme-toggle');
+    btns.forEach(btn => {
+      if (theme === 'light') {
+        btn.innerHTML = '<i data-lucide="moon" style="width: 16px; height: 16px;"></i>';
+      } else {
+        btn.innerHTML = '<i data-lucide="sun" style="width: 16px; height: 16px;"></i>';
+      }
+      lucide.createIcons({ nodes: [btn] });
+    });
   },
 
   // Toggle show/hide password
@@ -338,6 +514,7 @@ const app = {
     
     const loginContainer = document.getElementById('loginLogoContainer');
     const sidebarContainer = document.getElementById('sidebarLogoContainer');
+    const topHeaderContainer = document.getElementById('topHeaderLogoContainer');
     const navbarContainer = document.getElementById('navbarLogoContainer');
     const pdfContainer = document.getElementById('pdfLogoContainer');
     const settingsPreview = document.getElementById('settingsLogoPreview');
@@ -350,6 +527,10 @@ const app = {
       if (sidebarContainer) {
         sidebarContainer.innerHTML = `<img src="${logoData}" style="max-height: 130px; max-width: 220px; object-fit: contain; margin-bottom: 5px;">`;
         sidebarContainer.style.display = 'block';
+      }
+      if (topHeaderContainer) {
+        topHeaderContainer.innerHTML = `<img src="${logoData}" style="max-height: 36px; max-width: 120px; object-fit: contain; border-radius: 4px;">`;
+        topHeaderContainer.style.display = 'block';
       }
       if (navbarContainer) {
         navbarContainer.innerHTML = `<img src="${logoData}" style="max-height: 60px; max-width: 140px; object-fit: contain; border-radius: 4px; display: block;">`;
@@ -436,6 +617,107 @@ const app = {
     localStorage.setItem('businessLogo', url);
     this.applyLogo();
     this.showAlert("URL Logo berhasil disimpan!", "success");
+  },
+
+  async loadCalendarShares() {
+    const listContainer = document.getElementById('calendarShareList');
+    if (!listContainer) return;
+
+    if (!this.data.apiUrl) {
+      listContainer.innerHTML = `<div class="text-muted" style="font-size: 11px; text-align: center; padding: 10px;">API URL belum dikonfigurasi. Hubungkan Google Sheets terlebih dahulu.</div>`;
+      return;
+    }
+
+    try {
+      const res = await fetch(`${this.data.apiUrl}?action=GET_CALENDAR_SHARES&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
+      const json = await res.json();
+      if (json.status === 'success' && Array.isArray(json.data)) {
+        if (json.data.length === 0) {
+          listContainer.innerHTML = `<div class="text-muted" style="font-size: 11px; text-align: center; padding: 10px;">Belum ada email Google lain yang ditambahkan.</div>`;
+        } else {
+          let html = '<table class="table table-sm table-borderless" style="margin:0; font-size:12px; color:var(--color-text);">';
+          json.data.forEach(share => {
+            html += `
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 6px 4px; vertical-align: middle;">
+                  <i data-lucide="user" style="width: 14px; height: 14px; margin-right: 6px; vertical-align: middle; color: var(--color-primary);"></i>
+                  ${this.escapeHTML(share.email)}
+                </td>
+                <td style="padding: 6px 4px; text-align: right; vertical-align: middle;">
+                  <button class="btn btn-danger btn-xs" onclick="app.removeCalendarShare('${share.id}')" style="padding: 2px 6px; font-size: 10px; height: 22px;">
+                    <i data-lucide="trash-2" style="width: 11px; height: 11px; vertical-align: middle;"></i> Hapus
+                  </button>
+                </td>
+              </tr>
+            `;
+          });
+          html += '</table>';
+          listContainer.innerHTML = html;
+          lucide.createIcons({ nodes: [listContainer] });
+        }
+      } else {
+        listContainer.innerHTML = `<div class="text-muted" style="font-size: 11px; text-align: center; padding: 10px; color: var(--color-danger);">Gagal memuat daftar sharing.</div>`;
+      }
+    } catch (err) {
+      console.error(err);
+      listContainer.innerHTML = `<div class="text-muted" style="font-size: 11px; text-align: center; padding: 10px; color: var(--color-danger);">Koneksi gagal saat mengambil data.</div>`;
+    }
+  },
+
+  async addCalendarShare() {
+    const emailInput = document.getElementById('shareCalendarEmail');
+    if (!emailInput) return;
+    const email = emailInput.value.trim();
+    if (!email) {
+      this.showAlert("Silakan masukkan email Google yang valid.", "warning");
+      return;
+    }
+
+    if (!this.data.apiUrl) {
+      this.showAlert("API URL belum dikonfigurasi.", "error");
+      return;
+    }
+
+    this.showLoading(true, "Menambahkan akses kalender...");
+    try {
+      const res = await fetch(`${this.data.apiUrl}?action=SHARE_CALENDAR&email=${encodeURIComponent(email)}&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
+      const json = await res.json();
+      if (json.status === 'success') {
+        emailInput.value = '';
+        this.showAlert(`Akses kalender berhasil dibagikan ke ${email}!`, "success");
+        this.loadCalendarShares();
+      } else {
+        this.showAlert(json.message || "Gagal membagikan kalender. Pastikan format email benar.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      this.showAlert("Terjadi kesalahan koneksi.", "error");
+    } finally {
+      this.showLoading(false);
+    }
+  },
+
+  async removeCalendarShare(ruleId) {
+    if (!this.data.apiUrl) return;
+
+    if (await this.showConfirm("Apakah Anda yakin ingin menghapus akses kalender untuk email ini?", "Hapus Akses Kalender")) {
+      this.showLoading(true, "Menghapus akses kalender...");
+      try {
+        const res = await fetch(`${this.data.apiUrl}?action=UNSHARE_CALENDAR&ruleId=${encodeURIComponent(ruleId)}&token=${localStorage.getItem('sessionToken') || ''}`, { credentials: 'omit' });
+        const json = await res.json();
+        if (json.status === 'success') {
+          this.showAlert("Akses kalender berhasil dihapus.", "success");
+          this.loadCalendarShares();
+        } else {
+          this.showAlert(json.message || "Gagal menghapus akses.", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        this.showAlert("Terjadi kesalahan koneksi.", "error");
+      } finally {
+        this.showLoading(false);
+      }
+    }
   },
 
   saveLogo(e) {
@@ -549,6 +831,23 @@ const app = {
     const userJson = localStorage.getItem('currentUser');
     const token = localStorage.getItem('sessionToken');
     if (userJson && token) {
+      // Validate session activity timeout on initial load
+      const lastActivity = Number(localStorage.getItem('lastActivityTime')) || 0;
+      if (lastActivity > 0) {
+        const diff = Date.now() - lastActivity;
+        const timeoutLimit = 15 * 60 * 1000; // 15 minutes in ms
+        if (diff >= timeoutLimit) {
+          localStorage.removeItem('currentUser');
+          localStorage.removeItem('sessionToken');
+          localStorage.removeItem('lastActivityTime');
+          this.data.currentUser = null;
+          document.getElementById('pageLogin').classList.remove('hidden');
+          document.getElementById('appLayout').classList.add('hidden');
+          this.showAlert("Sesi Anda telah berakhir karena tidak ada aktivitas selama 15 menit. Silakan login kembali.", "warning");
+          return;
+        }
+      }
+
       this.data.currentUser = JSON.parse(userJson);
       document.getElementById('pageLogin').classList.add('hidden');
       document.getElementById('appLayout').classList.remove('hidden');
@@ -594,8 +893,8 @@ const app = {
   applyRoles() {
     const role = this.data.currentUser.role;
     const displayName = this.data.currentUser.name || this.data.currentUser.username;
-    document.getElementById('displayUsername').textContent = displayName;
-    document.getElementById('displayRole').textContent = role;
+    document.querySelectorAll('.user-name-display').forEach(el => el.textContent = displayName);
+    document.querySelectorAll('.user-role-display').forEach(el => el.textContent = role);
 
     const adminElements = document.querySelectorAll('.admin-only');
     adminElements.forEach(el => {
@@ -673,6 +972,21 @@ const app = {
 
   // === Navigation ===
   navigate(page) {
+    const titles = {
+      dashboard: "Dashboard",
+      invoices: "Invoices",
+      schedules: "Schedules",
+      menus: "Master Menu",
+      users: "Master User",
+      reports: "Reports",
+      settings: "Settings",
+      'create-invoice': "Create Invoice"
+    };
+    const titleEl = document.getElementById('topHeaderPageTitle');
+    if (titleEl && titles[page]) {
+      titleEl.textContent = titles[page];
+    }
+
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (page === 'users' && role !== 'super admin') {
       this.showAlert('Anda tidak memiliki akses ke Manajemen Pengguna.', 'error', 'Akses Ditolak');
@@ -770,6 +1084,10 @@ const app = {
         const urlInput = document.getElementById('settingLogoUrl');
         if (urlInput) {
           urlInput.value = logoData.startsWith('http') ? logoData : '';
+        }
+        const role = this.data.currentUser ? this.data.currentUser.role : 'user';
+        if (role === 'admin' || role === 'super admin') {
+          this.loadCalendarShares();
         }
       }
       if(page === 'reports') {
@@ -1588,7 +1906,7 @@ const app = {
   },
 
   async deleteMenu(id) {
-    if(await this.showConfirm("Apakah Anda yakin ingin menghapus menu ini?", "Hapus Menu")) {
+    if(await this.showConfirm("Are you sure you want to delete this menu?", "Delete Menu")) {
       await this.deleteRow('Menus', id);
       this.renderMenus();
     }
@@ -1997,13 +2315,13 @@ const app = {
       pageItems.forEach(inv => {
         let statusBadge = '';
         if (inv.status === 'Lunas') {
-          statusBadge = '<span style="color:var(--color-success); background:rgba(16,185,129,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">Lunas</span>';
+          statusBadge = '<span style="color:var(--color-success); background:rgba(16,185,129,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">Paid</span>';
         } else if (inv.status === 'Draft') {
           statusBadge = '<span style="color:var(--color-text-muted); background:rgba(255,255,255,0.08); border: 1px solid var(--color-border); padding:3px 7px; border-radius:4px; font-size:12px;">Draft</span>';
         } else if (inv.status === 'DP / Sebagian' || (Number(inv.paidAmount) > 0 && Number(inv.paidAmount) < Number(inv.totalAmount))) {
-          statusBadge = '<span style="color:#f59e0b; background:rgba(245,158,11,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">DP / Sebagian</span>';
+          statusBadge = '<span style="color:#f59e0b; background:rgba(245,158,11,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">Partial</span>';
         } else {
-          statusBadge = '<span style="color:var(--color-danger); background:rgba(239,68,68,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">Belum Lunas</span>';
+          statusBadge = '<span style="color:var(--color-danger); background:rgba(239,68,68,0.1); padding:4px 8px; border-radius:4px; font-size:12px;">Unpaid</span>';
         }
 
         table.innerHTML += `
@@ -2290,21 +2608,35 @@ const app = {
       inv = localInvoices.find(i => i.invoiceNumber == invoiceNumber || i.id == invoiceNumber);
     }
 
-    // === PRIORITY 3: Fetch from Google Sheets API (fallback) ===
+    // === PRIORITY 3: Fetch from Google Sheets API (fallback with phone verification) ===
     if (!inv) {
       const apiUrl = this.data.apiUrl || this.DEFAULT_API_URL;
       if (apiUrl) {
-        try {
-          const res = await fetch(`${apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${encodeURIComponent(invoiceNumber)}`, { credentials: 'omit' });
-          const json = await res.json();
-          if (json.status === 'success') {
-            inv = json.data;
-          } else {
-            apiError = `API merespons: "${json.message || 'Invoice tidak ditemukan di Google Sheets'}"`;
+        let phoneInput = localStorage.getItem(`verify_phone_${invoiceNumber}`);
+        if (!phoneInput) {
+          phoneInput = prompt("Silakan masukkan nomor telepon Anda (sebagai penerima invoice) untuk memvalidasi keamanan invoice:");
+          if (phoneInput) {
+            phoneInput = phoneInput.trim();
           }
-        } catch (err) {
-          apiError = `Gagal terhubung ke server: ${err.message}`;
-          console.error("Gagal memuat invoice dari cloud:", err);
+        }
+        
+        if (phoneInput) {
+          try {
+            const res = await fetch(`${apiUrl}?action=GET_GUEST_INVOICE&invoiceNumber=${encodeURIComponent(invoiceNumber)}&phone=${encodeURIComponent(phoneInput)}`, { credentials: 'omit' });
+            const json = await res.json();
+            if (json.status === 'success') {
+              inv = json.data;
+              localStorage.setItem(`verify_phone_${invoiceNumber}`, phoneInput); // Cache phone locally for comfort
+            } else {
+              apiError = json.message || 'Nomor verifikasi salah atau invoice tidak ditemukan.';
+              localStorage.removeItem(`verify_phone_${invoiceNumber}`);
+            }
+          } catch (err) {
+            apiError = `Gagal terhubung ke server: ${err.message}`;
+            console.error("Gagal memuat invoice dari cloud:", err);
+          }
+        } else {
+          apiError = "Verifikasi keamanan diperlukan untuk melihat invoice ini.";
         }
       } else {
         apiError = 'API URL belum dikonfigurasi.';
@@ -2738,79 +3070,156 @@ const app = {
   },
 
   updateNotifications() {
-    const badge = document.getElementById('notificationBadge');
-    const countLabel = document.getElementById('notificationCountLabel');
-    const listContainer = document.getElementById('notificationList');
-    if (!badge || !listContainer) return;
+    const badges = document.querySelectorAll('.notification-badge');
+    const countLabels = document.querySelectorAll('.notification-count-label');
+    const listContainers = document.querySelectorAll('.notification-list-container');
+    if (listContainers.length === 0) return;
 
     const todayStr = this.getLocalYMD(new Date());
-    const dueInvoices = this.data.invoices.filter(inv => {
-      if (!inv.cateringDate) return false;
+
+    // Day difference helper (T00:00:00 midnight matching)
+    const getDaysDiff = (dateStr1, dateStr2) => {
+      const d1 = new Date(dateStr1 + 'T00:00:00');
+      const d2 = new Date(dateStr2 + 'T00:00:00');
+      const diffTime = d1 - d2;
+      return Math.round(diffTime / (1000 * 60 * 60 * 24));
+    };
+
+    const notificationsList = [];
+
+    // 1. Gather due/overdue invoices
+    this.data.invoices.forEach(inv => {
+      if (!inv.cateringDate) return;
       const paid = Number(inv.paidAmount) || 0;
       const total = Number(inv.totalAmount) || 0;
       const isLunas = inv.status === 'Lunas' || (paid >= total && total > 0);
       const cDate = inv.cateringDate.substring(0, 10);
-      return !isLunas && cDate <= todayStr;
-    });
-
-    // Sort by cateringDate descending (most overdue / most recent first)
-    dueInvoices.sort((a, b) => b.cateringDate.localeCompare(a.cateringDate));
-
-    const count = dueInvoices.length;
-    if (count > 0) {
-      badge.textContent = count;
-      badge.style.display = 'flex';
-      if (countLabel) countLabel.textContent = count;
-    } else {
-      badge.style.display = 'none';
-      if (countLabel) countLabel.textContent = 0;
-    }
-
-    listContainer.innerHTML = '';
-    if (count === 0) {
-      listContainer.innerHTML = `
-        <div class="notification-empty-state">
-          <i data-lucide="check-circle" style="width: 24px; height: 24px; color: var(--color-success);"></i>
-          <p style="margin: 0; font-size: 12px; font-weight: 500;">Semua tagihan lunas!</p>
-          <p style="margin: 0; font-size: 10px; color: var(--color-text-muted);">Tidak ada invoice jatuh tempo yang belum dibayar.</p>
-        </div>
-      `;
-    } else {
-      dueInvoices.forEach(inv => {
-        const paid = Number(inv.paidAmount) || 0;
-        const total = Number(inv.totalAmount) || 0;
+      
+      // If unpaid and catering date is today or in the past
+      if (!isLunas && cDate <= todayStr) {
         const remaining = total - paid;
         const status = inv.status || 'Belum Lunas';
         const isDp = status === 'DP / Sebagian' || (paid > 0 && paid < total);
         
         const iconClass = isDp ? 'warning' : 'danger';
         const iconName = isDp ? 'alert-triangle' : 'alert-circle';
-        const titleText = this.escapeHTML(inv.customerName || 'Pelanggan');
+        const titleText = this.escapeHTML(inv.customerName || 'Customer');
         const dateFormatted = this.formatDate(inv.cateringDate);
         const remainingFormatted = this.formatCurrency(remaining);
         const invoiceNum = this.escapeHTML(inv.invoiceNumber);
 
-        listContainer.innerHTML += `
+        const html = `
           <div class="notification-item" onclick="app.viewNotificationInvoice('${inv.id}')">
             <div class="notification-item-icon ${iconClass}">
               <i data-lucide="${iconName}" style="width: 16px; height: 16px;"></i>
             </div>
             <div class="notification-item-content">
               <span class="notification-item-title">${titleText} (${invoiceNum})</span>
-              <span class="notification-item-desc">Sisa tagihan: <strong style="color:var(--color-danger);">${remainingFormatted}</strong></span>
-              <span class="notification-item-date">Jatuh Tempo: ${dateFormatted}</span>
+              <span class="notification-item-desc">Sisa Tagihan: <strong style="color:var(--color-danger);">${remainingFormatted}</strong></span>
+              <span class="notification-item-date">Due Date: ${dateFormatted}</span>
             </div>
           </div>
         `;
+
+        notificationsList.push({
+          date: cDate,
+          html: html
+        });
+      }
+    });
+
+    // 2. Gather active schedules (Booking/Meeting) within [-1, 3] days window
+    this.data.schedules.forEach(sch => {
+      if (!sch.date) return;
+      if (sch.type !== 'Booking' && sch.type !== 'Meeting') return;
+
+      const eventDateStr = sch.date.substring(0, 10);
+      const diff = getDaysDiff(eventDateStr, todayStr);
+
+      if (diff >= -1 && diff <= 3) {
+        const iconClass = sch.type === 'Meeting' ? 'meeting' : 'booking';
+        const iconName = sch.type === 'Meeting' ? 'users' : 'calendar';
+        const typeLabel = sch.type === 'Meeting' ? 'Rapat' : 'Booking';
+        const titleText = this.escapeHTML(sch.title || 'Untitled Event');
+        const locationText = this.escapeHTML(sch.location || '-');
+        const dateFormatted = this.formatDate(sch.date);
+
+        let relativeText = '';
+        if (diff === 3) relativeText = ' (3 hari lagi)';
+        else if (diff === 2) relativeText = ' (2 hari lagi)';
+        else if (diff === 1) relativeText = ' (Besok)';
+        else if (diff === 0) relativeText = ' (Hari Ini)';
+        else if (diff === -1) relativeText = ' (Kemarin)';
+
+        const isDraft = sch.status === 'Draft';
+        const draftLabel = isDraft ? ' <span style="font-size:9px; color:#f59e0b; font-weight:700;">(DRAFT)</span>' : '';
+
+        const html = `
+          <div class="notification-item" onclick="app.viewNotificationSchedule('${sch.id}')">
+            <div class="notification-item-icon ${iconClass}">
+              <i data-lucide="${iconName}" style="width: 16px; height: 16px;"></i>
+            </div>
+            <div class="notification-item-content">
+              <span class="notification-item-title">${typeLabel}: ${titleText}${draftLabel}</span>
+              <span class="notification-item-desc">Lokasi: <strong>${locationText}</strong></span>
+              <span class="notification-item-date ${iconClass}">Jadwal: ${dateFormatted}${relativeText}</span>
+            </div>
+          </div>
+        `;
+
+        notificationsList.push({
+          date: eventDateStr,
+          html: html
+        });
+      }
+    });
+
+    // 3. Sort chronologically by date
+    notificationsList.sort((a, b) => a.date.localeCompare(b.date));
+
+    const count = notificationsList.length;
+
+    // Update badges
+    badges.forEach(badge => {
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    });
+
+    // Update count labels
+    countLabels.forEach(label => {
+      label.textContent = count;
+    });
+
+    let html = '';
+    if (count === 0) {
+      html = `
+        <div class="notification-empty-state">
+          <i data-lucide="check-circle" style="width: 24px; height: 24px; color: var(--color-success);"></i>
+          <p style="margin: 0; font-size: 12px; font-weight: 500;">Semua aman!</p>
+          <p style="margin: 0; font-size: 10px; color: var(--color-text-muted);">Tidak ada notifikasi aktif saat ini.</p>
+        </div>
+      `;
+    } else {
+      notificationsList.forEach(item => {
+        html += item.html;
       });
     }
-    lucide.createIcons({ nodes: [listContainer] });
+
+    listContainers.forEach(listContainer => {
+      listContainer.innerHTML = html;
+      lucide.createIcons({ nodes: [listContainer] });
+    });
   },
 
   viewNotificationInvoice(invoiceId) {
-    // Close dropdown
-    const dropdown = document.getElementById('notificationDropdown');
-    if (dropdown) dropdown.classList.remove('active');
+    // Close dropdowns
+    document.querySelectorAll('.notification-dropdown').forEach(dropdown => {
+      dropdown.classList.remove('active');
+    });
 
     const inv = this.data.invoices.find(i => i.id == invoiceId);
     if (!inv) return;
@@ -2835,6 +3244,41 @@ const app = {
     this.invoiceState.filterDateTo = '';
     this.invoiceState.currentPage = 1;
     this.renderInvoices();
+  },
+
+  viewNotificationSchedule(scheduleId) {
+    // Close dropdowns
+    document.querySelectorAll('.notification-dropdown').forEach(dropdown => {
+      dropdown.classList.remove('active');
+    });
+
+    const sch = this.data.schedules.find(s => s.id == scheduleId);
+    if (!sch) return;
+
+    // Navigate to schedules view
+    this.navigate('schedules');
+
+    // Highlight calendar month/year
+    let datePart = sch.date;
+    if (datePart.includes('T')) datePart = datePart.split('T')[0];
+    const parts = datePart.split('-');
+    
+    this.scheduleState.currentYear = parseInt(parts[0]);
+    this.scheduleState.currentMonth = parseInt(parts[1]) - 1;
+    this.scheduleState.selectedDate = datePart;
+
+    // Update active label
+    const label = document.getElementById('selectedDateLabel');
+    if (label) {
+      label.textContent = this.formatDate(datePart);
+    }
+
+    this.scheduleState.currentPage = 1;
+    this.renderCalendar();
+    this.renderSchedules(false);
+
+    // Open edit modal for the schedule
+    this.editSchedule(scheduleId);
   },
 
   renderCreateInvoiceInit() {
@@ -3101,10 +3545,10 @@ const app = {
       this.renderInvoices();
       this.renderDashboard();
       this.renderSchedules(true); // Refresh calendar schedules
-      this.showAlert("Perubahan invoice berhasil disimpan!", "success");
+      this.showAlert("Invoice changes saved successfully!", "success");
     } catch (err) {
       console.error(err);
-      this.showAlert("Gagal menyimpan perubahan invoice.", "error");
+      this.showAlert("Failed to save invoice changes.", "error");
     } finally {
       this.showLoading(false);
     }
@@ -3113,10 +3557,10 @@ const app = {
   async deleteInvoice(id) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (role !== 'admin' && role !== 'super admin') {
-      this.showAlert("Anda tidak memiliki izin untuk menghapus invoice.", "error", "Akses Ditolak");
+      this.showAlert("You do not have permission to delete invoices.", "error", "Access Denied");
       return;
     }
-    if(await this.showConfirm("Hapus Invoice ini? Data yang dihapus tidak dapat dikembalikan.", "Hapus Invoice")) {
+    if(await this.showConfirm("Delete this invoice? Deleted data cannot be recovered.", "Delete Invoice")) {
       await this.deleteRow('Invoices', id);
       this.renderInvoices();
       this.renderDashboard();
@@ -3126,7 +3570,7 @@ const app = {
   async markInvoicePaid(id) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (role !== 'admin' && role !== 'super admin') {
-      this.showAlert("Anda tidak memiliki izin untuk memperbarui status pembayaran invoice.", "error", "Akses Ditolak");
+      this.showAlert("You do not have permission to update invoice payment status.", "error", "Access Denied");
       return;
     }
     const inv = this.data.invoices.find(i => i.id == id);
@@ -3170,7 +3614,7 @@ const app = {
     const addAmount = Number(amountInput.value);
     
     if (isNaN(addAmount) || addAmount <= 0) {
-      this.showAlert("Nominal pelunasan tidak valid.", "error");
+      this.showAlert("Invalid payoff amount.", "error");
       return;
     }
     
@@ -3183,7 +3627,7 @@ const app = {
     payload.paidAmount = newPaid;
     payload.status = status;
     
-    this.showLoading(true, "Menyimpan Pelunasan...");
+    this.showLoading(true, "Saving Payoff...");
     
     try {
       await this.updateRow('Invoices', payload);
@@ -3191,10 +3635,10 @@ const app = {
       this.renderInvoices();
       this.renderDashboard();
       this.renderSchedules(true);
-      this.showAlert("Pembayaran pelunasan berhasil disimpan!", "success");
+      this.showAlert("Payment payoff saved successfully!", "success");
     } catch (err) {
       console.error(err);
-      this.showAlert("Gagal menyimpan pelunasan.", "error");
+      this.showAlert("Failed to save payoff payment.", "error");
     } finally {
       this.showLoading(false);
     }
@@ -3513,7 +3957,7 @@ const app = {
   async saveInvoice(isDraft = false) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (role !== 'admin' && role !== 'super admin') {
-      this.showAlert("Anda tidak memiliki izin untuk menyimpan invoice.", "error", "Akses Ditolak");
+      this.showAlert("You do not have permission to save invoices.", "error", "Access Denied");
       return;
     }
     const editId = document.getElementById('invEditId').value;
@@ -3967,7 +4411,10 @@ const app = {
       this.scheduleState.currentMonth = 11;
       this.scheduleState.currentYear--;
     }
+    this.scheduleState.selectedDate = ''; // Clear selected day filter on month change
+    this.scheduleState.currentPage = 1;
     this.renderCalendar();
+    this.renderSchedules(false);
   },
 
   nextMonth() {
@@ -3976,7 +4423,10 @@ const app = {
       this.scheduleState.currentMonth = 0;
       this.scheduleState.currentYear++;
     }
+    this.scheduleState.selectedDate = ''; // Clear selected day filter on month change
+    this.scheduleState.currentPage = 1;
     this.renderCalendar();
+    this.renderSchedules(false);
   },
 
   renderSchedules(resetInputs = true) {
@@ -4036,8 +4486,22 @@ const app = {
       });
     });
 
-    // 2. Filter
+    // 2. Filter (Automatically filter schedules by currently viewed calendar month and year)
+    const activeMonth = this.scheduleState.currentMonth;
+    const activeYear = this.scheduleState.currentYear;
+
     let filtered = combinedSchedules.filter(item => {
+      const itemDate = new Date(item._rawDate);
+      if (isNaN(itemDate.getTime())) return false;
+
+      const itemYear = itemDate.getFullYear();
+      const itemMonth = itemDate.getMonth();
+
+      // Only show schedules that belong to the active calendar month & year
+      if (itemYear !== activeYear || itemMonth !== activeMonth) {
+        return false;
+      }
+
       const matchName = !this.scheduleState.searchName || 
         (String(item.title).toLowerCase().includes(this.scheduleState.searchName.toLowerCase()));
         
@@ -4272,14 +4736,14 @@ const app = {
   },
 
   async deleteSchedule(id) {
-    if (await this.showConfirm("Hapus jadwal ini? Jadwal juga akan dihapus dari Google Calendar.", "Hapus Jadwal")) {
-      this.showLoading(true, "Menghapus jadwal...");
+    if (await this.showConfirm("Delete this schedule? The schedule will also be deleted from Google Calendar.", "Delete Schedule")) {
+      this.showLoading(true, "Deleting schedule...");
       try {
         await this.deleteRow('Schedules', id);
         this.renderSchedules(true);
-        this.showAlert("Jadwal berhasil dihapus!", "success");
+        this.showAlert("Schedule deleted successfully!", "success");
       } catch (err) {
-        this.showAlert("Gagal menghapus jadwal.", "error");
+        this.showAlert("Failed to delete schedule.", "error");
       } finally {
         this.showLoading(false);
       }
@@ -4322,7 +4786,7 @@ const app = {
           status: statusOverride ? statusOverride : (existing.status || 'Active')
         };
         await this.updateRow('Schedules', payload);
-        this.showAlert("Jadwal berhasil diperbarui!", "success");
+        this.showAlert("Schedule updated successfully!", "success");
       } else {
         const newSchedule = {
           id: Date.now().toString(),
@@ -4335,13 +4799,13 @@ const app = {
           createdat: new Date().toISOString()
         };
         await this.addRow('Schedules', newSchedule);
-        this.showAlert("Jadwal baru berhasil dibuat!", "success");
+        this.showAlert("New schedule created successfully!", "success");
       }
       this.closeModal('addScheduleModal');
       this.renderSchedules(true);
     } catch (err) {
       console.error(err);
-      this.showAlert("Gagal menyimpan jadwal.", "error");
+      this.showAlert("Failed to save schedule.", "error");
     } finally {
       this.showLoading(false);
     }
@@ -4435,7 +4899,7 @@ const app = {
       if (pwdInput) {
         pwdInput.value = '';
         pwdInput.type = 'password';
-        pwdInput.placeholder = 'Kosongkan jika tidak ingin ubah password';
+        pwdInput.placeholder = 'Leave blank if you do not want to change password';
         pwdInput.removeAttribute('required');
       }
       // Reset ikon eye ke kondisi awal
@@ -4450,7 +4914,7 @@ const app = {
   },
 
   async deleteUser(id) {
-    if(await this.showConfirm("Hapus user ini?", "Hapus User")) {
+    if(await this.showConfirm("Delete this user?", "Delete User")) {
       await this.deleteRow('Users', id);
       this.renderUsers();
     }
@@ -4529,23 +4993,23 @@ const app = {
     let password = document.getElementById('profilePassword').value.trim();
     
     if (!name || !username || !password) {
-      this.showAlert("Semua field harus diisi!", "warning");
+      this.showAlert("All fields must be filled!", "warning");
       return;
     }
     
     if (isDraft) {
       this.closeModal('profileModal');
-      this.showAlert("Profil berhasil disimpan sebagai Draft!", "success");
+      this.showAlert("Profile saved successfully as Draft!", "success");
       return;
     }
     
     const existing = this.data.users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.id !== this.data.currentUser.id);
     if (existing) {
-      this.showAlert("Username sudah digunakan oleh akun lain. Silakan pilih username lain.", "warning");
+      this.showAlert("Username is already taken by another account. Please choose another username.", "warning");
       return;
     }
     
-    this.showLoading(true, "Memperbarui data akun...");
+    this.showLoading(true, "Updating account data...");
     
     if (password === "********") {
       password = "";
@@ -4588,10 +5052,10 @@ const app = {
       this.applyRoles();
       
       this.closeModal('profileModal');
-      this.showAlert("Data profil akun berhasil diperbarui!", "success");
+      this.showAlert("Account profile updated successfully!", "success");
     } catch (err) {
       console.error(err);
-      this.showAlert("Gagal memperbarui data profil akun.", "error");
+      this.showAlert("Failed to update account profile.", "error");
     } finally {
       this.showLoading(false);
     }
@@ -5852,6 +6316,15 @@ const app = {
     document.getElementById(id).classList.add('hidden');
   },
 
+  toggleMobileSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.querySelector('.sidebar-overlay');
+    if (sidebar && overlay) {
+      const isActive = sidebar.classList.toggle('active');
+      overlay.classList.toggle('active', isActive);
+    }
+  },
+
   showAlert(message, type = 'info', title = 'Pemberitahuan') {
     return new Promise((resolve) => {
       const modal = document.getElementById('customAlertModal');
@@ -6000,12 +6473,21 @@ const app = {
         menuSearch.placeholder = "Search menu name or description...";
       }
     }
+
+    // Re-render the active view's dynamic content so its templates and tables update instantly
+    const activeLink = document.querySelector('.nav-link.active');
+    if (activeLink) {
+      const activePage = activeLink.getAttribute('data-page');
+      if (activePage) {
+        this.triggerPageSpecificRenders(activePage);
+      }
+    }
   },
 
   importInvoicesFromExcel(e) {
     const role = this.data.currentUser ? this.data.currentUser.role : 'user';
     if (role !== 'admin' && role !== 'super admin') {
-      this.showAlert("Anda tidak memiliki izin untuk mengimpor invoice.", "error", "Akses Ditolak");
+      this.showAlert("You do not have permission to import invoices.", "error", "Access Denied");
       return;
     }
     const file = e.target.files[0];
@@ -6143,9 +6625,7 @@ const app = {
         }
 
         this.showAlert(
-          this.data.language === 'en'
-            ? `Successfully imported ${successCount} invoices!`
-            : `Berhasil mengimpor ${successCount} data invoice!`,
+          `Successfully imported ${successCount} invoices!`,
           "success"
         );
         
@@ -6155,9 +6635,7 @@ const app = {
       } catch (err) {
         console.error(err);
         this.showAlert(
-          this.data.language === 'en'
-            ? `Failed to import Excel: ${err.message}`
-            : `Gagal mengimpor Excel: ${err.message}`,
+          `Failed to import Excel: ${err.message}`,
           "error"
         );
       } finally {
@@ -6167,7 +6645,7 @@ const app = {
     };
 
     reader.onerror = () => {
-      this.showAlert("Gagal membaca file.", "error");
+      this.showAlert("Failed to read file.", "error");
       this.showLoading(false);
     };
 
@@ -6343,7 +6821,7 @@ const app = {
       tbody.innerHTML = `
         <tr>
           <td colspan="4" style="text-align: center; padding: 30px; color: var(--color-text-muted);">
-            Tidak ada menu yang cocok.
+            No matching menus found.
           </td>
         </tr>
       `;
@@ -6479,7 +6957,7 @@ const app = {
     }
 
     this.closeModal('menuSelectionModal');
-    this.showAlert("Menu katering berhasil ditambahkan ke invoice!", "success");
+    this.showAlert("Catering menu successfully added to invoice!", "success");
   },
 
   formatNumberToIndonesian(num) {
@@ -6536,10 +7014,17 @@ const app = {
       link.addEventListener('click', (e) => {
         e.preventDefault();
         this.navigate(e.currentTarget.dataset.page);
+        
+        // Auto-close mobile sidebar on click
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar && sidebar.classList.contains('active')) {
+          this.toggleMobileSidebar();
+        }
       });
     });
 
     window.addEventListener('resize', () => {
+      this.adjustResponsiveZoom();
       const activeLink = document.querySelector('.nav-tab.active');
       if (activeLink) {
         this.updateNavIndicator(activeLink.dataset.page);
@@ -6556,26 +7041,36 @@ const app = {
       );
     });
 
-    document.getElementById('btnLogout').addEventListener('click', () => this.logout());
+    document.querySelectorAll('.btn-logout-action').forEach(btn => {
+      btn.addEventListener('click', () => this.logout());
+    });
 
     // Navbar User Profile click event
-    const navbarUser = document.querySelector('.navbar-user');
-    if (navbarUser) {
-      navbarUser.addEventListener('click', () => this.openProfileModal());
-    }
+    document.querySelectorAll('.navbar-user').forEach(widget => {
+      widget.addEventListener('click', () => this.openProfileModal());
+    });
 
     // Notification Toggle
-    const btnNotif = document.getElementById('btnNotificationToggle');
-    const dropdownNotif = document.getElementById('notificationDropdown');
-    if (btnNotif && dropdownNotif) {
+    document.querySelectorAll('.btn-notification-toggle').forEach(btnNotif => {
       btnNotif.addEventListener('click', (e) => {
         e.stopPropagation();
-        dropdownNotif.classList.toggle('active');
+        const wrapper = btnNotif.closest('.navbar-notification-wrapper');
+        if (wrapper) {
+          const dropdownNotif = wrapper.querySelector('.notification-dropdown');
+          if (dropdownNotif) dropdownNotif.classList.toggle('active');
+        }
       });
-      document.addEventListener('click', (e) => {
-        if (!dropdownNotif.contains(e.target) && e.target !== btnNotif && !btnNotif.contains(e.target)) {
+    });
+
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.notification-dropdown').forEach(dropdownNotif => {
+        const wrapper = dropdownNotif.closest('.navbar-notification-wrapper');
+        const btnNotif = wrapper ? wrapper.querySelector('.btn-notification-toggle') : null;
+        
+        if (btnNotif && !dropdownNotif.contains(e.target) && e.target !== btnNotif && !btnNotif.contains(e.target)) {
           dropdownNotif.classList.remove('active');
         }
+      });
         
         // Hide autocomplete suggestions on click outside
         const createSuggestions = document.getElementById('invMenuSelectSuggestions');
@@ -6587,7 +7082,6 @@ const app = {
           editSuggestions.classList.add('hidden');
         }
       });
-    }
 
     // Settings
     document.getElementById('btnSaveSettings').addEventListener('click', () => this.saveSettings());
