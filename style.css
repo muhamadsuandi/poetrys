@@ -239,6 +239,11 @@ textarea {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+select option {
+  background-color: var(--color-bg) !important;
+  color: var(--color-text) !important;
+}
+
 body.light-theme input[type="text"],
 body.light-theme input[type="password"],
 body.light-theme input[type="number"],
@@ -926,7 +931,19 @@ body.light-theme .login-card .form-group input:focus {
 }
 .pdf-container {
   padding: 40px;
-  font-family: Arial, sans-serif;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+/* Force universal Arial and reset spacing for print previews and pdf generation */
+.pdf-container,
+.pdf-container *,
+#pdfContent,
+#pdfContent *,
+#pdfReportContent,
+#pdfReportContent * {
+  font-family: Arial, Helvetica, sans-serif !important;
+  letter-spacing: 0 !important;
+  text-shadow: none !important;
 }
 
 /* Schedules Timeline */
@@ -2916,44 +2933,37 @@ body.light-theme .grand-total-row {
   white-space: nowrap !important;
 }
 
-.invoice-items-table th:nth-child(1),
-.invoice-items-table td:nth-child(1) {
-  width: 140px !important;
-  max-width: 140px !important;
+.invoice-items-table .col-item {
+  width: 160px !important;
+  max-width: 160px !important;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: center !important;
+  text-align: left !important;
 }
 
-.invoice-items-table th:nth-child(2),
-.invoice-items-table td:nth-child(2) {
-  width: 130px !important; /* Price */
-  text-align: center !important;
+.invoice-items-table .col-price {
+  width: 130px !important;
 }
 
-.invoice-items-table th:nth-child(3),
-.invoice-items-table td:nth-child(3) {
-  width: 100px !important; /* Qty */
-  text-align: center !important;
+.invoice-items-table .col-qty {
+  width: 85px !important;
 }
 
-.invoice-items-table th:nth-child(4),
-.invoice-items-table td:nth-child(4) {
-  width: 70px !important; /* Unit */
-  text-align: center !important;
+.invoice-items-table .col-unit {
+  width: 70px !important;
 }
 
-.invoice-items-table th:nth-child(5),
-.invoice-items-table td:nth-child(5) {
-  width: 130px !important; /* Subtotal */
-  text-align: center !important;
+.invoice-items-table .col-subtotal {
+  width: 130px !important;
 }
 
-.invoice-items-table th:nth-child(6),
-.invoice-items-table td:nth-child(6) {
-  width: 60px !important; /* Action */
-  text-align: center !important;
+.invoice-items-table .col-memo {
+  width: 180px !important;
+}
+
+.invoice-items-table .col-action {
+  width: 60px !important;
   padding: 6px 4px !important;
 }
 
@@ -2996,18 +3006,7 @@ body.light-theme .grand-total-row {
 
 /* Adjust sizes for small screens */
 @media (max-width: 768px) {
-  .invoice-items-table th:nth-child(2),
-  .invoice-items-table td:nth-child(2) {
-    width: 110px !important;
-  }
-  .invoice-items-table th:nth-child(3),
-  .invoice-items-table td:nth-child(3) {
-    width: 80px !important;
-  }
-  .invoice-items-table th:nth-child(5),
-  .invoice-items-table td:nth-child(5) {
-    width: 110px !important;
-  }
+  /* Column widths are kept stable to prevent input overlap. */
   .summary-row .summary-value,
   .summary-row .grand-total-value,
   .discount-amount-label,
@@ -3325,12 +3324,11 @@ body.light-theme .autocomplete-suggestion-item {
   html, body {
     background: #ffffff !important;
     color: #000000 !important;
-    font-size: 12pt !important;
   }
 
   /* Hide everything except the print template wrapper */
   #appLayout,
-  .modal-backdrop:not(#pdfTemplateWrapper),
+  .modal-backdrop:not(#pdfTemplateWrapper):not(#pdfReportWrapper),
   .modal-header,
   .btn,
   button,
@@ -3341,7 +3339,8 @@ body.light-theme .autocomplete-suggestion-item {
   }
 
   /* Strip modal styles for a clean layout */
-  #pdfTemplateWrapper {
+  #pdfTemplateWrapper,
+  #pdfReportWrapper {
     position: static !important;
     display: block !important;
     background: transparent !important;
@@ -3355,7 +3354,8 @@ body.light-theme .autocomplete-suggestion-item {
     z-index: auto !important;
   }
 
-  #pdfTemplateWrapper .modal {
+  #pdfTemplateWrapper .modal,
+  #pdfReportWrapper .modal {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -3368,7 +3368,8 @@ body.light-theme .autocomplete-suggestion-item {
     border-radius: 0 !important;
   }
 
-  #pdfTemplateWrapper .modal-body {
+  #pdfTemplateWrapper .modal-body,
+  #pdfReportWrapper .modal-body {
     background: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -3376,7 +3377,8 @@ body.light-theme .autocomplete-suggestion-item {
     display: block !important;
   }
 
-  #pdfContent {
+  #pdfContent,
+  #pdfReportContent {
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
@@ -3833,6 +3835,10 @@ body.light-theme .sidebar-pin-btn:hover {
   display: none !important;
 }
 
+.sidebar.collapsed .nav-link.hidden {
+  display: none !important;
+}
+
 .sidebar.collapsed .nav-link {
   position: relative !important;
   display: flex !important;
@@ -4039,4 +4045,13 @@ body.light-theme .sidebar.collapsed .nav-link span::before {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
   }
+}
+
+/* Staff specific layout overrides */
+body.role-staff .dashboard-widgets,
+body.role-staff .dashboard-row-2 {
+  grid-template-columns: 1fr !important;
+}
+body.role-staff .dashboard-calendar-widget {
+  max-width: 100% !important;
 }

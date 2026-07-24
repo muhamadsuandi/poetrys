@@ -76,7 +76,7 @@ function syncToCalendar(sheetName, payload, oldEventId) {
         const items = typeof payload.items === 'string' ? JSON.parse(payload.items) : (payload.items || []);
         itemsStr = items.map(i => i.qty + "x " + i.name).join(", ");
       } catch(e){}
-      desc = "Phone: " + (payload.customerPhone || "") + "\\nLoc: " + (payload.cateringLocation || "") + "\\nItems: " + itemsStr;
+      desc = "Vendor: " + (payload.vendor || "") + "\\nLoc: " + (payload.cateringLocation || "") + "\\nItems: " + itemsStr;
     } else if (sheetName === "Schedules") {
       if (!payload.date) return oldEventId;
       title = (payload.type || "Schedule") + ": " + (payload.title || "Untitled");
@@ -206,6 +206,18 @@ function handleResponse(e) {
   try {
     const doc = SpreadsheetApp.getActiveSpreadsheet();
 
+    // Ensure 'allowedmenus' header exists in Users sheet
+    const usersSheet = doc.getSheetByName("Users");
+    if (usersSheet) {
+      const headers = usersSheet.getRange(1, 1, 1, usersSheet.getLastColumn()).getValues()[0];
+      const allowedMenusIdx = headers.indexOf("allowedmenus");
+      if (allowedMenusIdx === -1) {
+        usersSheet.getRange(1, headers.length + 1).setValue("allowedmenus");
+      }
+    }
+
+    // Column migrations are handled manually in the spreadsheet.
+
     // === CALENDAR SHARING ACTIONS ===
     if (action === "GET_CALENDAR_SHARES") {
       const shares = getCalendarShares();
@@ -259,6 +271,7 @@ function handleResponse(e) {
       const roleIdx = headers.indexOf("role");
       const nameIdx = headers.indexOf("name");
       const idIdx = headers.indexOf("id");
+      const allowedMenusIdx = headers.indexOf("allowedmenus");
       
       for (let i = 1; i < data.length; i++) {
         if (data[i][userIdx] === username && data[i][passIdx] === passwordHash) {
@@ -266,7 +279,8 @@ function handleResponse(e) {
             id: data[i][idIdx],
             username: data[i][userIdx],
             role: data[i][roleIdx],
-            name: nameIdx > -1 ? data[i][nameIdx] : ""
+            name: nameIdx > -1 ? data[i][nameIdx] : "",
+            allowedmenus: allowedMenusIdx > -1 ? data[i][allowedMenusIdx] : ""
           };
           const token = generateToken(userObj);
           return ContentService.createTextOutput(JSON.stringify({ status: "success", token: token, user: userObj }))
@@ -299,10 +313,10 @@ function handleResponse(e) {
 
     if (action === "GET_GUEST_INVOICE") {
       const invNum = e.parameter.invoiceNumber;
-      const phoneInput = e.parameter.phone; // New parameter for security verification
+      const vendorInput = e.parameter.vendor || e.parameter.phone;
       
-      if (!phoneInput) {
-        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Verification required. Please provide your phone number." }))
+      if (!vendorInput) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Verification required. Please provide your Vendor Name." }))
           .setMimeType(ContentService.MimeType.JSON);
       }
       
@@ -311,15 +325,14 @@ function handleResponse(e) {
       const data = sheet.getDataRange().getValues();
       const headers = data[0];
       const invNumIdx = headers.indexOf("invoiceNumber");
-      const phoneIdx = headers.indexOf("customerPhone");
+      const vendorIdx = headers.indexOf("vendor");
       
       for (let i = 1; i < data.length; i++) {
         if (data[i][invNumIdx] == invNum) {
-          // Clean phone numbers to compare trailing digits (removes spaces, dashes, and prefixes like +62 or 0)
-          const cleanDbPhone = String(data[i][phoneIdx] || '').replace(/[^0-9]/g, '').replace(/^(62|0)/, '');
-          const cleanInputPhone = String(phoneInput).replace(/[^0-9]/g, '').replace(/^(62|0)/, '');
+          const dbVendor = String(data[i][vendorIdx] || '').trim().toLowerCase();
+          const inputVendor = String(vendorInput).trim().toLowerCase();
           
-          if (cleanDbPhone === cleanInputPhone && cleanInputPhone !== '') {
+          if (dbVendor === inputVendor && inputVendor !== '') {
             const rowData = {};
             for (let j = 0; j < headers.length; j++) {
               rowData[headers[j]] = data[i][j];
@@ -327,7 +340,7 @@ function handleResponse(e) {
             return ContentService.createTextOutput(JSON.stringify({ status: "success", data: rowData }))
               .setMimeType(ContentService.MimeType.JSON);
           } else {
-            return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Nomor telepon verifikasi salah. Akses ditolak." }))
+            return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Nama Vendor verifikasi salah. Akses ditolak." }))
               .setMimeType(ContentService.MimeType.JSON);
           }
         }
@@ -407,6 +420,31 @@ function handleResponse(e) {
           resultData[sheetName] = [];
         }
       });
+
+      // Retrieve fresh profile and permissions for the requesting user
+      const usersSheet = doc.getSheetByName("Users");
+      if (usersSheet) {
+        const usersData = usersSheet.getDataRange().getValues();
+        const usersHeaders = usersData[0];
+        const uIdx = usersHeaders.indexOf("username");
+        const roleIdx = usersHeaders.indexOf("role");
+        const nameIdx = usersHeaders.indexOf("name");
+        const idIdx = usersHeaders.indexOf("id");
+        const allowedMenusIdx = usersHeaders.indexOf("allowedmenus");
+        
+        for (let i = 1; i < usersData.length; i++) {
+          if (usersData[i][uIdx] === user.u) {
+            resultData["currentUser"] = {
+              id: usersData[i][idIdx],
+              username: usersData[i][uIdx],
+              role: usersData[i][roleIdx],
+              name: nameIdx > -1 ? usersData[i][nameIdx] : "",
+              allowedmenus: allowedMenusIdx > -1 ? usersData[i][allowedMenusIdx] : ""
+            };
+            break;
+          }
+        }
+      }
 
       return ContentService.createTextOutput(JSON.stringify({ status: "success", data: resultData }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -532,9 +570,9 @@ function handleResponse(e) {
             let val = payload[headers[j]];
             if (val === undefined) {
                val = data[i][j];
-            } else if (sheetName === "Users" && headers[j] === "password" && val === "") {
-               val = data[i][j]; // keep old password
-            }
+             } else if (sheetName === "Users" && headers[j] === "password" && (val === "" || val === "********")) {
+                val = data[i][j]; // keep old password
+             }
             newRow.push(val);
           }
           sheet.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);

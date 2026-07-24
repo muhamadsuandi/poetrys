@@ -2934,7 +2934,7 @@ const app = {
       if (discType !== 'none' && discAmt > 0) {
         document.getElementById('pdfDiscountInfo').textContent = discType === 'percent' ? `(${discVal}%)` : '';
         document.getElementById('pdfDiscountAmount').textContent = `- ${this.formatCurrency(discAmt)}`;
-        pdfDiscRow.style.display = 'table-row';
+        pdfDiscRow.style.display = 'flex';
       } else {
         pdfDiscRow.style.display = 'none';
       }
@@ -2945,7 +2945,7 @@ const app = {
     if (pdfAddFeeRow) {
       if (addFee > 0) {
         document.getElementById('pdfAdditionalFeeAmount').textContent = this.formatCurrency(addFee);
-        pdfAddFeeRow.style.display = 'table-row';
+        pdfAddFeeRow.style.display = 'flex';
       } else {
         pdfAddFeeRow.style.display = 'none';
       }
@@ -2953,7 +2953,7 @@ const app = {
 
     document.getElementById('pdfGrandTotal').textContent = this.formatCurrency(inv.totalAmount);
 
-    // Render Dynamic Payment History inside PDF Summary Box (Table row structure)
+    // Render Dynamic Payment History inside PDF Summary Box
     const pdfHistoryRows = document.getElementById('pdfPaymentHistoryRows');
     if (pdfHistoryRows) {
       let history = [];
@@ -2975,15 +2975,15 @@ const app = {
       }
 
       if (history.length > 0) {
-        pdfHistoryRows.style.display = 'table-row-group';
+        pdfHistoryRows.style.display = 'flex';
         pdfHistoryRows.innerHTML = history.map(p => {
           const dateStr = p.date ? this.formatDate(p.date) : '';
           const label = `${dateStr} (${p.method}${p.notes ? ' - ' + p.notes : ''})`;
           return `
-            <tr>
-              <td style="text-align: left; padding: 4px 0; font-style: italic; font-size: 10px; color: #64748b; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">• ${this.escapeHTML(label)}</td>
-              <td style="text-align: right; padding: 4px 0; font-size: 10px; color: #475569; font-weight: bold;">${this.formatCurrency(p.amount)}</td>
-            </tr>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #64748b;">
+              <span style="font-style: italic; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">• ${this.escapeHTML(label)}</span>
+              <strong>${this.formatCurrency(p.amount)}</strong>
+            </div>
           `;
         }).join('');
       } else {
@@ -4260,74 +4260,112 @@ const app = {
         return;
       }
 
-      this.showLoading(true, 'Membuka jendela cetak...');
+      // Resolve jsPDF class safely supporting all versions/globals
+      let jsPDFClass = null;
+      if (typeof window.jsPDF !== 'undefined') {
+        jsPDFClass = window.jsPDF;
+      } else if (typeof window.jspdf !== 'undefined' && typeof window.jspdf.jsPDF !== 'undefined') {
+        jsPDFClass = window.jspdf.jsPDF;
+      }
 
-      // Open a blank window
-      const printWin = window.open('', '_blank');
-      if (!printWin) {
-        this.showLoading(false);
-        this.showAlert('Gagal membuka jendela cetak. Pastikan pop-up browser diperbolehkan.', 'warning');
+      const hasHtml2Canvas = typeof html2canvas !== 'undefined';
+      const hasJsPDF = jsPDFClass !== null;
+
+      if (!hasHtml2Canvas || !hasJsPDF) {
+        this.showAlert(`Library cetak PDF belum termuat sepenuhnya. Silakan refresh halaman dan coba kembali.`, 'warning');
         return;
       }
 
-      // Build HTML document with app stylesheets and our specific Arial print styling
-      printWin.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${fileName || 'Invoice'}</title>
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
-            <style>
-              body { 
-                background: #ffffff !important; 
-                color: #000000 !important; 
-                margin: 0; 
-                padding: 0;
-                font-family: Arial, Helvetica, sans-serif !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .pdf-container { 
-                width: 100% !important; 
-                max-width: 100% !important; 
-                box-shadow: none !important; 
-                border: none !important; 
-                padding: 40px !important;
-                background: #ffffff !important;
-                color: #000000 !important;
-                box-sizing: border-box;
-              }
-              .pdf-container, .pdf-container * {
-                font-family: Arial, Helvetica, sans-serif !important;
-                letter-spacing: 0 !important;
-                text-shadow: none !important;
-              }
-              /* Print media specific styles */
-              @media print {
-                body { margin: 0; padding: 0; }
-                .pdf-container { padding: 30px !important; }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="pdf-container">
-              ${pdfEl.innerHTML}
-            </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.print();
-                  window.close();
-                }, 350);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      printWin.document.close();
+      const wrapper = document.getElementById('pdfTemplateWrapper');
+      let wrapperWasHidden = false;
+      let originalWrapperStyle = '';
+      if (wrapper && (wrapper.classList.contains('hidden') || window.getComputedStyle(wrapper).display === 'none')) {
+        wrapperWasHidden = true;
+        originalWrapperStyle = wrapper.getAttribute('style') || '';
+        wrapper.style.position = 'absolute';
+        wrapper.style.top = '-9999px';
+        wrapper.style.left = '-9999px';
+        wrapper.style.display = 'block';
+        wrapper.classList.remove('hidden');
+      }
 
-      this.showLoading(false);
-      this.closeModal('pdfTemplateWrapper');
+      this.showLoading(true, 'Menyiapkan PDF...');
+
+      // Save original styles to restore later
+      const originalStyle = pdfEl.getAttribute('style') || '';
+
+      // Force a stable desktop A4 layout (794px width) to prevent mobile squishing
+      pdfEl.style.width = '794px';
+      pdfEl.style.minWidth = '794px';
+      pdfEl.style.maxWidth = '794px';
+      pdfEl.style.height = 'auto';
+
+      // Hide SVGs to prevent browser taint/insecure errors
+      const svgs = pdfEl.querySelectorAll('svg');
+      const svgOriginals = [];
+      svgs.forEach(svg => {
+        svgOriginals.push({ el: svg, display: svg.style.display });
+        svg.style.display = 'none';
+      });
+
+      // Hide non-base64 images to prevent canvas taint
+      const taintedImages = [];
+      const images = pdfEl.querySelectorAll('img');
+      images.forEach(img => {
+        const src = img.src || '';
+        if (!src.startsWith('data:')) {
+          taintedImages.push({ element: img, originalDisplay: img.style.display });
+          img.style.display = 'none';
+        }
+      });
+
+      // Restore DOM function
+      const restoreDOM = () => {
+        pdfEl.setAttribute('style', originalStyle);
+        svgs.forEach((svg, i) => { svg.style.display = svgOriginals[i].display; });
+        taintedImages.forEach(item => { 
+          item.element.style.display = item.originalDisplay; 
+        });
+        if (wrapperWasHidden && wrapper) {
+          wrapper.classList.add('hidden');
+          wrapper.setAttribute('style', originalWrapperStyle);
+        }
+      };
+
+      // Wait 150ms for browser DOM to apply before capturing
+      setTimeout(() => {
+        html2canvas(pdfEl, { 
+          scale: 2, 
+          useCORS: true, 
+          allowTaint: false, 
+          logging: false,
+          windowWidth: 794
+        })
+          .then(canvas => {
+            return canvas.toDataURL('image/jpeg', 0.95);
+          })
+          .then(imgData => {
+            let pdf = new jsPDFClass('p', 'mm', 'a4');
+            const pdfWidth = typeof pdf.internal.pageSize.getWidth === 'function'
+              ? pdf.internal.pageSize.getWidth()
+              : (pdf.internal.pageSize.width || 210);
+              
+            const pdfHeight = (pdfEl.offsetHeight * pdfWidth) / pdfEl.offsetWidth;
+            
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(fileName + '.pdf');
+            
+            restoreDOM();
+            this.showLoading(false);
+            this.closeModal('pdfTemplateWrapper');
+          })
+          .catch(err => {
+            console.error('PDF generation failure:', err);
+            restoreDOM();
+            this.showLoading(false);
+            this.showAlert('Proses pembuatan PDF gagal: ' + err.message, 'error');
+          });
+      }, 150);
     } catch (globalErr) {
       console.error('Global catch inside generatePDF:', globalErr);
       this.showLoading(false);
@@ -6430,80 +6468,77 @@ const app = {
         return;
       }
 
-      this.showLoading(true, 'Membuka jendela cetak...');
+      // Resolve jsPDF class safely
+      let jsPDFClass = null;
+      if (typeof window.jsPDF !== 'undefined') {
+        jsPDFClass = window.jsPDF;
+      } else if (typeof window.jspdf !== 'undefined' && typeof window.jspdf.jsPDF !== 'undefined') {
+        jsPDFClass = window.jspdf.jsPDF;
+      }
 
-      // Open a blank window
-      const printWin = window.open('', '_blank');
-      if (!printWin) {
-        this.showLoading(false);
-        this.showAlert('Gagal membuka jendela cetak. Pastikan pop-up browser diperbolehkan.', 'warning');
+      const hasHtml2Canvas = typeof html2canvas !== 'undefined';
+      const hasJsPDF = jsPDFClass !== null;
+
+      if (!hasHtml2Canvas || !hasJsPDF) {
+        this.showAlert('Library cetak PDF belum termuat sepenuhnya.', 'warning');
         return;
       }
 
-      const periodText = document.getElementById('pdfReportPeriod').textContent;
+      this.showLoading(true, 'Mengekspor PDF Laporan...');
 
-      printWin.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Laporan Pendapatan - ${periodText}</title>
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
-            <style>
-              body { 
-                background: #ffffff !important; 
-                color: #000000 !important; 
-                margin: 0; 
-                padding: 0;
-                font-family: Arial, Helvetica, sans-serif !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              .pdf-container { 
-                width: 100% !important; 
-                max-width: 100% !important; 
-                box-shadow: none !important; 
-                border: none !important; 
-                padding: 40px !important;
-                background: #ffffff !important;
-                color: #000000 !important;
-                box-sizing: border-box;
-              }
-              .pdf-container, .pdf-container * {
-                font-family: Arial, Helvetica, sans-serif !important;
-                letter-spacing: 0 !important;
-                text-shadow: none !important;
-              }
-              /* Print media specific styles */
-              @media print {
-                body { margin: 0; padding: 0; }
-                .pdf-container { padding: 30px !important; }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="pdf-container">
-              ${pdfEl.innerHTML}
-            </div>
-            <script>
-              window.onload = function() {
-                setTimeout(function() {
-                  window.print();
-                  window.close();
-                }, 350);
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      printWin.document.close();
+      // Save original styles to restore later
+      const originalStyle = pdfEl.getAttribute('style') || '';
 
-      this.showLoading(false);
-      this.closeModal('pdfReportWrapper');
-      this.showAlert('Laporan berhasil dikirim ke printer!', 'success');
+      // Force a stable desktop A4 layout (794px width) to prevent mobile squishing
+      pdfEl.style.width = '794px';
+      pdfEl.style.minWidth = '794px';
+      pdfEl.style.maxWidth = '794px';
+      pdfEl.style.height = 'auto';
+
+      // Restore DOM function
+      const restoreDOM = () => {
+        pdfEl.setAttribute('style', originalStyle);
+      };
+
+      setTimeout(() => {
+        html2canvas(pdfEl, { 
+          scale: 2, 
+          useCORS: true, 
+          allowTaint: false, 
+          logging: false,
+          windowWidth: 794
+        })
+          .then(canvas => {
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const pdf = new jsPDFClass('p', 'mm', 'a4');
+            
+            const pdfWidth = typeof pdf.internal.pageSize.getWidth === 'function'
+              ? pdf.internal.pageSize.getWidth()
+              : (pdf.internal.pageSize.width || 210);
+              
+            const pdfHeight = (pdfEl.offsetHeight * pdfWidth) / pdfEl.offsetWidth;
+            
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            
+            const periodText = document.getElementById('pdfReportPeriod').textContent.replace(/[^a-zA-Z0-9]/g, '_');
+            pdf.save(`Laporan_Pendapatan_${periodText}.pdf`);
+            
+            restoreDOM();
+            this.showLoading(false);
+            this.closeModal('pdfReportWrapper');
+            this.showAlert('Laporan PDF berhasil diunduh!', 'success');
+          })
+          .catch(err => {
+            console.error('PDF report creation failed:', err);
+            restoreDOM();
+            this.showLoading(false);
+            this.showAlert('Gagal mengekspor PDF laporan: ' + err.message, 'error');
+          });
+      }, 150);
     } catch (err) {
       console.error(err);
       this.showLoading(false);
-      this.showAlert('Terjadi kesalahan saat mencetak laporan: ' + err.message, 'error');
+      this.showAlert('Terjadi kesalahan saat mengekspor laporan: ' + err.message, 'error');
     }
   },
 
