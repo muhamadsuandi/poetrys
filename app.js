@@ -1210,6 +1210,8 @@ const app = {
         document.getElementById('settingApiUrl').value = this.data.apiUrl;
         const paymentAccInput = document.getElementById('settingPaymentAccounts');
         if (paymentAccInput) paymentAccInput.value = localStorage.getItem('paymentAccounts') || '';
+        const companyPhoneInput = document.getElementById('settingCompanyPhone');
+        if (companyPhoneInput) companyPhoneInput.value = localStorage.getItem('companyPhone') || '';
         const logoData = localStorage.getItem('businessLogo') || '';
         const urlInput = document.getElementById('settingLogoUrl');
         if (urlInput) {
@@ -2659,8 +2661,8 @@ const app = {
     if (pdfLogoContainer) {
       const logoB64 = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : '');
       pdfLogoContainer.innerHTML = logoB64
-        ? `<img src="${logoB64}" style="max-height:70px;display:block;" alt="Logo">`
-        : `<h2 style="margin:0;font-size:20px;font-weight:700;color:var(--color-primary);">Poetry's Catering</h2>`;
+        ? `<img src="${logoB64}" style="max-height:85px;display:inline-block;vertical-align:middle;" alt="Logo">`
+        : `<h2 style="margin:0;font-size:20px;font-weight:700;color:var(--color-primary);display:inline-block;vertical-align:middle;">Poetry's Catering</h2>`;
     }
 
     const qrContainer = document.getElementById('pdfQrCode');
@@ -2834,9 +2836,9 @@ const app = {
     if (pdfLogoContainer) {
       const logoB64 = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : '');
       if (logoB64) {
-        pdfLogoContainer.innerHTML = `<img src="${logoB64}" style="max-height: 70px; display: block;" alt="Business Logo">`;
+        pdfLogoContainer.innerHTML = `<img src="${logoB64}" style="max-height: 85px; display: inline-block; vertical-align: middle;" alt="Business Logo">`;
       } else {
-        pdfLogoContainer.innerHTML = `<h2 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--color-primary);">Poetry's Catering</h2>`;
+        pdfLogoContainer.innerHTML = `<h2 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--color-primary); display: inline-block; vertical-align: middle;">Poetry's Catering</h2>`;
       }
     }
 
@@ -2871,6 +2873,11 @@ const app = {
   },
 
   populatePDFTemplate(inv) {
+    const companyPhone = localStorage.getItem('companyPhone') || '+62 812-xxxx-xxxx';
+    const pdfCompPhoneEl = document.getElementById('pdfCompanyPhone');
+    if (pdfCompPhoneEl) {
+      pdfCompPhoneEl.textContent = companyPhone;
+    }
     document.getElementById('pdfCustName').textContent = inv.customerName || '-';
     document.getElementById('pdfCustPhone').textContent = inv.vendor ? 'Vendor: ' + inv.vendor : '-';
     document.getElementById('pdfCatLocation').textContent = inv.cateringLocation || '-';
@@ -2975,17 +2982,21 @@ const app = {
       }
 
       if (history.length > 0) {
-        pdfHistoryRows.style.display = 'table-row-group';
-        pdfHistoryRows.innerHTML = history.map(p => {
-          const dateStr = p.date ? this.formatDate(p.date) : '';
-          const label = `${dateStr} (${p.method}${p.notes ? ' - ' + p.notes : ''})`;
-          return `
-            <tr>
-              <td style="text-align: left; padding: 4px 0; font-style: italic; font-size: 10px; color: #64748b; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">• ${this.escapeHTML(label)}</td>
-              <td style="text-align: right; padding: 4px 0; font-size: 10px; color: #475569; font-weight: bold;">${this.formatCurrency(p.amount)}</td>
-            </tr>
-          `;
-        }).join('');
+        pdfHistoryRows.style.display = 'block';
+        pdfHistoryRows.innerHTML = `
+          <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+            ${history.map(p => {
+              const dateStr = p.date ? this.formatDate(p.date) : '';
+              const label = `${dateStr} (${p.method}${p.notes ? ' - ' + p.notes : ''})`;
+              return `
+                <tr>
+                  <td style="text-align: left; padding: 3px 0; font-style: italic; font-size: 10px; color: #64748b; width: 62%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">• ${this.escapeHTML(label)}</td>
+                  <td style="text-align: right; padding: 3px 0; font-size: 10px; color: #475569; font-weight: bold; width: 38%; white-space: nowrap;">${this.formatCurrency(p.amount)}</td>
+                </tr>
+              `;
+            }).join('')}
+          </table>
+        `;
       } else {
         pdfHistoryRows.style.display = 'none';
       }
@@ -3162,9 +3173,9 @@ const app = {
     if (pdfLogoContainer) {
       const logoB64 = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : '');
       if (logoB64) {
-        pdfLogoContainer.innerHTML = `<img src="${logoB64}" style="max-height: 70px; display: block;" alt="Business Logo">`;
+        pdfLogoContainer.innerHTML = `<img src="${logoB64}" style="max-height: 85px; display: inline-block; vertical-align: middle;" alt="Business Logo">`;
       } else {
-        pdfLogoContainer.innerHTML = `<h2 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--color-primary);">Poetry's Catering</h2>`;
+        pdfLogoContainer.innerHTML = `<h2 style="margin: 0; font-size: 20px; font-weight: 700; color: var(--color-primary); display: inline-block; vertical-align: middle;">Poetry's Catering</h2>`;
       }
     }
 
@@ -6408,7 +6419,14 @@ const app = {
       const logoContainer = document.getElementById('pdfReportLogoContainer');
       let logoData = localStorage.getItem('businessLogo') || (typeof DEFAULT_LOGO !== 'undefined' ? DEFAULT_LOGO : './logo.png');
       if (logoData && logoContainer) {
-        logoContainer.innerHTML = `<img src="${logoData}" style="max-height: 75px; max-width: 220px; object-fit: contain; border-radius: 4px; display: block;">`;
+        logoContainer.innerHTML = `<img src="${logoData}" style="max-height: 85px; max-width: 220px; object-fit: contain; border-radius: 4px; display: inline-block; vertical-align: middle;">`;
+      }
+
+      // 9.5 Load Business Phone
+      const companyPhone = localStorage.getItem('companyPhone') || '+62 812-xxxx-xxxx';
+      const pdfReportCompPhoneEl = document.getElementById('pdfReportCompanyPhone');
+      if (pdfReportCompPhoneEl) {
+        pdfReportCompPhoneEl.textContent = companyPhone;
       }
 
       // 10. Open Preview Modal
@@ -6517,6 +6535,9 @@ const app = {
     this.data.apiUrl = url;
     const paymentAccounts = document.getElementById('settingPaymentAccounts').value;
     localStorage.setItem('paymentAccounts', paymentAccounts);
+    
+    const companyPhone = document.getElementById('settingCompanyPhone').value.trim();
+    localStorage.setItem('companyPhone', companyPhone);
     
     this.showAlert("Pengaturan disimpan! Memuat ulang data...", "success");
     this.loadData();
